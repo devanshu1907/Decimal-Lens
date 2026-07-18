@@ -18,7 +18,7 @@ def get_groq_client():
     )
 
 # Model configuration
-DEFAULT_MODEL = "llama-3.3-70b-specdec"
+DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 # Auditor Agent System Prompt
 AUDITOR_SYSTEM_PROMPT = """You are the Auditor Agent, a key component of DecimalLens.

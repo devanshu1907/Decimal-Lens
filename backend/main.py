@@ -3,9 +3,13 @@ import json
 import asyncio
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+# Setup UPLOAD_DIR
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Load local environment variables from root .env.local
 dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env.local")
@@ -49,14 +53,43 @@ async def health_check():
         "message": "DecimalLens Python FastAPI Backend is active"
     }
 
+@app.get("/api/document/{filename}")
+async def get_document(filename: str):
+    """
+    Serves a raw document (e.g. PDF, CSV) from the uploads directory.
+    """
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Document not found")
+        
+    ext = safe_filename.split('.')[-1].lower()
+    if ext == 'pdf':
+        media_type = 'application/pdf'
+    elif ext == 'csv':
+        media_type = 'text/csv'
+    elif ext in ['md', 'markdown']:
+        media_type = 'text/markdown'
+    else:
+        media_type = 'text/plain'
+        
+    return FileResponse(file_path, media_type=media_type)
+
 @app.post("/api/upload")
 async def upload_document(file: UploadFile = File(...)):
     """
-    Ingests and parses a single financial document (PDF, CSV, MD).
+    Ingests, saves, and parses a single financial document (PDF, CSV, MD).
     Checks for layout alignment / malformed table structure.
     """
     try:
         contents = await file.read()
+        
+        # Save file to uploads folder
+        safe_filename = os.path.basename(file.filename)
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        with open(file_path, "wb") as f:
+            f.write(contents)
+            
         parsed_result = parse_document(file.filename, contents)
         return {
             "filename": file.filename,

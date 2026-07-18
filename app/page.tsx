@@ -12,6 +12,21 @@ import {
   Info,
   Database
 } from "lucide-react";
+import dynamic from "next/dynamic";
+
+const PdfViewer = dynamic(() => import("../components/PdfViewer"), {
+  ssr: false,
+});
+
+import {
+  useReactTable,
+  getCoreRowModel,
+  flexRender,
+  createColumnHelper,
+  getSortedRowModel,
+  SortingState
+} from "@tanstack/react-table";
+import { Command } from "cmdk";
 
 interface Claim {
   id: string;
@@ -23,6 +38,17 @@ interface Claim {
   page: number;
   context: string;
   reason?: string;
+}
+
+interface ForecasterResponse {
+  confidence: string;
+  risk_assessment: string;
+  projections: {
+    year: string;
+    projected_revenue: string;
+    projected_operating_income: string;
+    risk_weight: string;
+  }[];
 }
 
 const SAMPLE_FILING_TEXT = `DECIMALLENS INC.
@@ -54,8 +80,8 @@ const StreamingBox = ({ title, text }: { title: string; text: string }) => {
   }, [text]);
 
   return (
-    <div className="border border-border bg-[#0F172A] rounded-md p-4 font-mono text-[10px] text-emerald-400 max-h-[220px] overflow-y-auto shadow-inner flex flex-col gap-2">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2 sticky top-0 bg-[#0F172A]">
+    <div className="border border-border bg-[#F8FAFC] rounded-md p-4 font-mono text-[10px] text-slate-800 max-h-[220px] overflow-y-auto shadow-inner flex flex-col gap-2">
+      <div className="flex items-center justify-between border-b border-border pb-2 mb-2 sticky top-0 bg-[#F8FAFC]">
         <span className="text-[9px] uppercase tracking-wider text-slate-400 font-sans font-semibold">{title}</span>
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -83,16 +109,139 @@ export default function Page() {
   const [parsedText, setParsedText] = useState<string | null>(null);
   const [lowConfidence, setLowConfidence] = useState(false);
   const [extractedClaims, setExtractedClaims] = useState<Claim[]>([]);
-  const [forecasterResponse, setForecasterResponse] = useState<any>(null);
+  const [forecasterResponse, setForecasterResponse] = useState<ForecasterResponse | null>(null);
   const [auditorText, setAuditorText] = useState("");
   const [forecasterText, setForecasterText] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
   
   const [showRawAuditor, setShowRawAuditor] = useState(false);
   const [showRawForecaster, setShowRawForecaster] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const highlightRef = useRef<HTMLSpanElement | null>(null);
+
+  // TanStack Table configurations
+  const [claimsSorting, setClaimsSorting] = useState<SortingState>([]);
+  const [projectionSorting, setProjectionSorting] = useState<SortingState>([]);
+
+  const claimColumnHelper = createColumnHelper<Claim>();
+  const claimsColumns = [
+    claimColumnHelper.accessor("id", {
+      header: "ID",
+      cell: (info) => (
+        <span className="font-mono text-[10px] text-text-secondary">
+          {info.getValue().replace("claim-", "C")}
+        </span>
+      ),
+    }),
+    claimColumnHelper.accessor("metric", {
+      header: "Metric",
+      cell: (info) => (
+        <span className="font-semibold text-text-primary text-[11px] block truncate max-w-[150px]" title={info.getValue()}>
+          {info.getValue()}
+        </span>
+      ),
+    }),
+    claimColumnHelper.accessor("reported", {
+      header: "Reported",
+      cell: (info) => (
+        <span className="font-mono text-[11px] font-bold text-text-primary">
+          {info.getValue()}
+        </span>
+      ),
+    }),
+    claimColumnHelper.accessor("verified", {
+      header: "Status",
+      cell: (info) => {
+        const verified = info.getValue();
+        return verified ? (
+          <span className="inline-flex items-center gap-1 bg-[#E8F5E9] text-verified text-[9px] font-bold px-1.5 py-0.5 rounded border border-verified/10">
+            <CheckCircle2 className="w-2.5 h-2.5" />
+            OK
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 bg-[#FEF3C7] text-flagged text-[9px] font-bold px-1.5 py-0.5 rounded border border-flagged/10 animate-pulse">
+            <AlertTriangle className="w-2.5 h-2.5" />
+            Flagged
+          </span>
+        );
+      },
+    }),
+    claimColumnHelper.accessor("page", {
+      header: "Page",
+      cell: (info) => (
+        <span className="font-mono text-[10px] text-text-secondary">
+          P.{info.getValue()}
+        </span>
+      ),
+    }),
+  ];
+
+  const claimsTable = useReactTable({
+    data: extractedClaims,
+    columns: claimsColumns,
+    state: {
+      sorting: claimsSorting,
+    },
+    onSortingChange: setClaimsSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
+
+  interface ProjectionRow {
+    year: string;
+    projected_revenue: string;
+    projected_operating_income: string;
+    risk_weight: string;
+  }
+
+  const projectionColumnHelper = createColumnHelper<ProjectionRow>();
+  const projectionColumns = [
+    projectionColumnHelper.accessor("year", {
+      header: "Fiscal Year",
+      cell: (info) => <span className="font-sans font-medium text-text-primary">{info.getValue()}</span>,
+    }),
+    projectionColumnHelper.accessor("projected_revenue", {
+      header: "Projected Revenue",
+      cell: (info) => <span className="font-mono font-bold text-text-primary">{info.getValue()}</span>,
+    }),
+    projectionColumnHelper.accessor("projected_operating_income", {
+      header: "Projected Operating Income",
+      cell: (info) => {
+        const val = info.getValue();
+        const isHighRisk = val.includes("*");
+        return (
+          <span className={`font-mono font-bold ${isHighRisk ? "text-flagged font-semibold animate-pulse" : "text-text-primary"}`}>
+            {val}
+          </span>
+        );
+      },
+    }),
+    projectionColumnHelper.accessor("risk_weight", {
+      header: "Risk Weight",
+      cell: (info) => {
+        const val = info.getValue();
+        const isHighRisk = val.toLowerCase().includes("high");
+        return (
+          <span className={`font-sans font-medium ${isHighRisk ? "text-[#B45309]" : "text-verified"}`}>
+            {val}
+          </span>
+        );
+      },
+    }),
+  ];
+
+  const projectionsTable = useReactTable({
+    data: forecasterResponse?.projections || [],
+    columns: projectionColumns,
+    state: {
+      sorting: projectionSorting,
+    },
+    onSortingChange: setProjectionSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+  });
 
   // Command + K / Ctrl + K palette shortcut
   useEffect(() => {
@@ -119,6 +268,12 @@ export default function Page() {
   const handleSelectClaim = (claimId: string) => {
     setSelectedClaimId(claimId);
     setIsFlashing(claimId);
+    
+    const claim = extractedClaims.find((c) => c.id === claimId);
+    if (claim && claim.page) {
+      setCurrentPage(claim.page);
+    }
+
     setTimeout(() => {
       setIsFlashing(null);
     }, 1000);
@@ -134,13 +289,14 @@ export default function Page() {
     setForecasterText("");
     setErrorMsg("");
     setSelectedClaimId(null);
+    setCurrentPage(1);
     setIsAnalyzing(true);
 
     try {
       await runAnalysisStream(SAMPLE_FILING_TEXT, false);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to process sample document.");
+      setErrorMsg((err as Error).message || "Failed to process sample document.");
       setIsAnalyzing(false);
     }
   };
@@ -159,6 +315,7 @@ export default function Page() {
     setForecasterText("");
     setErrorMsg("");
     setSelectedClaimId(null);
+    setCurrentPage(1);
 
     try {
       const formData = new FormData();
@@ -179,9 +336,9 @@ export default function Page() {
       setLowConfidence(uploadData.low_confidence);
 
       await runAnalysisStream(uploadData.text, uploadData.low_confidence);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "An unexpected error occurred during processing.");
+      setErrorMsg((err as Error).message || "An unexpected error occurred during processing.");
       setIsAnalyzing(false);
     }
   };
@@ -241,9 +398,9 @@ export default function Page() {
           }
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || "Error reading analysis stream.");
+      setErrorMsg((err as Error).message || "Error reading analysis stream.");
     } finally {
       setIsAnalyzing(false);
       setStatusText("");
@@ -269,6 +426,9 @@ export default function Page() {
           setExtractedClaims(data.claims);
           if (data.claims && data.claims.length > 0) {
             setSelectedClaimId(data.claims[0].id);
+            if (data.claims[0].page) {
+              setCurrentPage(data.claims[0].page);
+            }
           }
           break;
         case "forecaster_chunk":
@@ -422,7 +582,7 @@ export default function Page() {
             )}
           </div>
 
-          <div className="flex-1 p-8 overflow-y-auto flex flex-col items-center bg-zinc-100 relative">
+          <div className={`flex-1 overflow-y-auto flex flex-col items-center bg-zinc-100 relative ${fileName && fileName.toLowerCase().endsWith('.pdf') ? 'p-0 overflow-hidden' : 'p-8'}`}>
             {!fileName ? (
               <div className="max-w-md w-full border-2 border-dashed border-border rounded-lg bg-panel p-8 text-center flex flex-col items-center gap-4 shadow-sm my-auto">
                 <div className="w-12 h-12 bg-bg rounded-full flex items-center justify-center text-text-secondary border border-border">
@@ -449,8 +609,44 @@ export default function Page() {
                   </button>
                 </div>
               </div>
+            ) : fileName.toLowerCase().endsWith('.pdf') ? (
+              /* Ingested PDF View */
+              <div className="w-full h-full flex flex-col overflow-hidden relative">
+                {isAnalyzing && !parsedText ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16">
+                    <div className="w-6 h-6 border-2 border-accent-navy border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-text-secondary font-mono">{statusText}</span>
+                  </div>
+                ) : (
+                  <PdfViewer
+                    url={`/api/document/${fileName}`}
+                    currentPage={currentPage}
+                    onPageChange={(page) => setCurrentPage(page)}
+                  />
+                )}
+
+                {/* Floating active claim indicator */}
+                {activeClaim && (
+                  <motion.div 
+                    layout
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="absolute bottom-4 left-4 right-4 bg-accent-navy text-white text-[11px] p-3 rounded-md flex items-center justify-between shadow-md z-10"
+                  >
+                    <span className="flex items-center gap-2 overflow-hidden mr-2">
+                      <Info className="w-3.5 h-3.5 text-blue-200 shrink-0" />
+                      <span className="font-sans truncate">
+                        Metric: <strong className="font-mono">{activeClaim.metric}</strong>
+                      </span>
+                    </span>
+                    <span className="bg-white/10 px-2 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
+                      Page {activeClaim.page}
+                    </span>
+                  </motion.div>
+                )}
+              </div>
             ) : (
-              /* Ingested PDF / CSV / Markdown View */
+              /* Ingested CSV / Markdown View */
               <div className="w-full max-w-2xl bg-panel border border-border shadow-md rounded-md p-8 min-h-[600px] flex flex-col relative font-sans text-xs leading-relaxed text-slate-800">
                 <div className="border-b border-border pb-4 mb-6">
                   <h2 className="text-center font-bold text-sm tracking-tight text-text-primary uppercase truncate">
@@ -606,68 +802,104 @@ export default function Page() {
 
                     {/* Claims list */}
                     {extractedClaims.length > 0 ? (
-                      <div className="flex flex-col gap-3">
-                        {extractedClaims.map((claim) => {
-                          const isSelected = claim.id === selectedClaimId;
-                          return (
-                            <div
-                              key={claim.id}
-                              onClick={() => handleSelectClaim(claim.id)}
-                              className={`border transition-all rounded-md p-4 cursor-pointer text-left ${
-                                isSelected 
-                                  ? "border-accent-navy bg-panel shadow-sm ring-1 ring-accent-navy/20" 
-                                  : claim.verified 
-                                    ? "border-border bg-panel hover:border-slate-300"
-                                    : "border-flagged/40 bg-flagged-bg/10 hover:border-flagged"
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <span className="text-[10px] font-mono text-text-secondary uppercase">
-                                    CLAIM {claim.id.replace("claim-", "")} | Page {claim.page}
-                                  </span>
-                                  <h4 className="text-xs font-semibold text-text-primary mt-0.5">
-                                    {claim.metric}
-                                  </h4>
-                                </div>
+                      <div className="flex flex-col gap-4">
+                        <div className="border border-border rounded-md overflow-hidden bg-panel shadow-sm">
+                          <table className="w-full border-collapse text-left text-xs">
+                            <thead>
+                              {claimsTable.getHeaderGroups().map(headerGroup => (
+                                <tr key={headerGroup.id} className="bg-bg border-b border-border">
+                                  {headerGroup.headers.map(header => (
+                                    <th 
+                                      key={header.id} 
+                                      onClick={header.column.getToggleSortingHandler()}
+                                      className="p-3 text-[10px] uppercase font-bold text-text-secondary tracking-wider cursor-pointer hover:bg-slate-200/50 transition-all select-none"
+                                    >
+                                      <div className="flex items-center gap-1">
+                                        {flexRender(header.column.columnDef.header, header.getContext())}
+                                        {{
+                                          asc: ' ▴',
+                                          desc: ' ▾',
+                                        }[header.column.getIsSorted() as string] ?? null}
+                                      </div>
+                                    </th>
+                                  ))}
+                                </tr>
+                              ))}
+                            </thead>
+                            <tbody className="divide-y divide-border/60">
+                              {claimsTable.getRowModel().rows.map(row => {
+                                const isSelected = row.original.id === selectedClaimId;
+                                return (
+                                  <tr 
+                                    key={row.id}
+                                    onClick={() => handleSelectClaim(row.original.id)}
+                                    className={`cursor-pointer transition-all hover:bg-bg/40 ${
+                                      isSelected 
+                                        ? "bg-slate-100/80 font-medium border-l-2 border-accent-navy" 
+                                        : row.original.verified
+                                          ? "bg-panel"
+                                          : "bg-flagged-bg/5 hover:bg-flagged-bg/10"
+                                    }`}
+                                  >
+                                    {row.getVisibleCells().map(cell => (
+                                      <td key={cell.id} className="p-3 max-w-[200px] truncate">
+                                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
 
-                                {claim.verified ? (
-                                  <span className="inline-flex items-center gap-1 bg-[#E8F5E9] border border-verified/25 text-verified text-[10px] font-semibold px-2 py-0.5 rounded font-sans shrink-0">
-                                    <CheckCircle2 className="w-3 h-3 text-verified" />
-                                    Verified
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 bg-[#FEF3C7] border border-flagged/20 text-flagged text-[10px] font-semibold px-2 py-0.5 rounded font-sans shrink-0 animate-pulse">
-                                    <AlertTriangle className="w-3 h-3 text-flagged" />
-                                    Flagged
-                                  </span>
-                                )}
+                        {/* Active Claim Detail Panel */}
+                        {activeClaim && (
+                          <motion.div
+                            layout
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`border rounded-md p-4 bg-panel ${
+                              activeClaim.verified ? "border-border" : "border-flagged/30 bg-flagged-bg/5"
+                            }`}
+                          >
+                            <div className="flex justify-between items-center border-b border-border/60 pb-2 mb-3">
+                              <h4 className="text-xs font-bold text-text-primary font-sans">
+                                Claim Details (Page {activeClaim.page})
+                              </h4>
+                              <span className="font-mono text-[10px] text-text-secondary">
+                                {activeClaim.id.toUpperCase()}
+                              </span>
+                            </div>
+                            
+                            <div className="flex flex-col gap-3 text-xs">
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Reported Value</span>
+                                <div className="font-mono font-bold text-text-primary text-[13px] mt-0.5">
+                                  {activeClaim.reported}
+                                </div>
                               </div>
-
-                              <div className="grid grid-cols-2 gap-4 mt-3 border-t border-border/60 pt-3">
-                                <div>
-                                  <span className="text-[9px] uppercase tracking-wider text-text-secondary">Reported Value</span>
-                                  <div className="text-xs font-mono font-bold text-text-primary mt-0.5">
-                                    {claim.reported}
-                                  </div>
-                                </div>
-                                <div>
-                                  <span className="text-[9px] uppercase tracking-wider text-text-secondary">Formula Parsing</span>
-                                  <div className="text-[10px] font-mono text-text-secondary mt-0.5 truncate" title={claim.formula}>
-                                    {claim.formula}
-                                  </div>
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Formula Check</span>
+                                <div className="font-mono text-text-primary bg-bg px-2 py-1.5 rounded border border-border mt-1 whitespace-pre-wrap break-all leading-relaxed">
+                                  {activeClaim.formula}
                                 </div>
                               </div>
-
-                              {/* Error Reason */}
-                              {!claim.verified && claim.reason && (
-                                <div className="mt-3 bg-flagged-bg/40 border border-flagged/10 rounded p-2.5 text-[11px] text-[#9A3412] leading-relaxed font-sans">
-                                  <strong>Auditor Notice:</strong> {claim.reason}
+                              <div>
+                                <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Filing Citation Context</span>
+                                <div className="text-text-secondary italic mt-1 bg-slate-50 border border-slate-100 p-2.5 rounded leading-relaxed text-[11px]">
+                                  {"\""}{activeClaim.context}{"\""}
+                                </div>
+                              </div>
+                              
+                              {!activeClaim.verified && activeClaim.reason && (
+                                <div className="bg-flagged-bg/30 border border-flagged/10 rounded p-3 text-[11px] text-[#9A3412] leading-relaxed mt-1">
+                                  <strong>Auditor Notice:</strong> {activeClaim.reason}
                                 </div>
                               )}
                             </div>
-                          );
-                        })}
+                          </motion.div>
+                        )}
                       </div>
                     ) : (
                       !isAnalyzing && (
@@ -760,43 +992,53 @@ export default function Page() {
                               </div>
                             </div>
 
-                            {/* Projections Table */}
-                            <div className="border border-border rounded-md overflow-hidden bg-panel mt-2">
-                              <div className="bg-bg border-b border-border p-3 flex justify-between items-center">
-                                <span className="text-[10px] font-bold text-text-primary uppercase tracking-wider">Growth Projections (3-Year)</span>
-                                <span className={`text-[9px] uppercase px-2 py-0.5 rounded font-semibold font-sans ${
-                                  forecasterResponse.confidence === "Low"
-                                    ? "bg-[#D97706] text-white"
-                                    : "bg-verified text-white"
-                                }`}>
-                                  Confidence: {forecasterResponse.confidence}
-                                </span>
-                              </div>
-                              <div className="divide-y divide-border text-xs">
-                                <div className="grid grid-cols-4 p-3 bg-slate-50 font-semibold text-text-secondary text-[10px] uppercase tracking-wider">
-                                  <div>Fiscal Year</div>
-                                  <div className="text-right">Projected Rev</div>
-                                  <div className="text-right">Proj Op Income</div>
-                                  <div className="text-right font-sans">Risk Weight</div>
-                                </div>
-
-                                {forecasterResponse.projections?.map((proj: any, idx: number) => {
-                                  const isHighRisk = proj.risk_weight.toLowerCase().includes("high");
-                                  return (
-                                    <div key={idx} className="grid grid-cols-4 p-3 font-mono items-center">
-                                      <div className="font-sans font-medium text-text-primary">{proj.year}</div>
-                                      <div className="text-right font-bold text-text-primary">{proj.projected_revenue}</div>
-                                      <div className={`text-right font-bold ${isHighRisk ? "text-flagged font-semibold animate-pulse" : "text-text-primary"}`}>
-                                        {proj.projected_operating_income}
-                                      </div>
-                                      <div className={`text-right font-sans ${isHighRisk ? "text-[#B45309] font-medium" : "text-verified font-medium"}`}>
-                                        {proj.risk_weight}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                             {/* Projections Table */}
+                             <div className="border border-border rounded-md overflow-hidden bg-panel mt-2 shadow-sm">
+                               <div className="bg-bg border-b border-border p-3 flex justify-between items-center">
+                                 <span className="text-[10px] font-bold text-text-primary uppercase tracking-wider">Growth Projections (3-Year)</span>
+                                 <span className={`text-[9px] uppercase px-2 py-0.5 rounded font-semibold font-sans ${
+                                   forecasterResponse.confidence === "Low"
+                                     ? "bg-[#D97706] text-white"
+                                     : "bg-verified text-white"
+                                 }`}>
+                                   Confidence: {forecasterResponse.confidence}
+                                 </span>
+                               </div>
+                               <table className="w-full border-collapse text-left text-xs">
+                                 <thead>
+                                   {projectionsTable.getHeaderGroups().map(headerGroup => (
+                                     <tr key={headerGroup.id} className="bg-slate-50 border-b border-border">
+                                       {headerGroup.headers.map(header => (
+                                         <th 
+                                           key={header.id}
+                                           onClick={header.column.getToggleSortingHandler()}
+                                           className="p-3 text-[10px] uppercase font-bold text-text-secondary tracking-wider cursor-pointer hover:bg-slate-200/50 transition-all select-none"
+                                         >
+                                           <div className="flex items-center gap-1">
+                                             {flexRender(header.column.columnDef.header, header.getContext())}
+                                             {{
+                                               asc: ' ▴',
+                                               desc: ' ▾',
+                                             }[header.column.getIsSorted() as string] ?? null}
+                                           </div>
+                                         </th>
+                                       ))}
+                                     </tr>
+                                   ))}
+                                 </thead>
+                                 <tbody className="divide-y divide-border/60">
+                                   {projectionsTable.getRowModel().rows.map(row => (
+                                     <tr key={row.id} className="hover:bg-bg/20 transition-all">
+                                       {row.getVisibleCells().map(cell => (
+                                         <td key={cell.id} className="p-3">
+                                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                         </td>
+                                       ))}
+                                     </tr>
+                                   ))}
+                                 </tbody>
+                               </table>
+                             </div>
                           </>
                         ) : (
                           !isAnalyzing && (
@@ -825,57 +1067,59 @@ export default function Page() {
               exit={{ scale: 0.95, opacity: 0 }}
               className="bg-panel border border-border w-full max-w-lg rounded-lg shadow-2xl overflow-hidden font-sans"
             >
-              <div className="flex items-center border-b border-border px-4 py-3 gap-3">
-                <Search className="w-4 h-4 text-text-secondary" />
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={extractedClaims.length > 0 ? "Type a financial line item or claim ID..." : "Load a file first to search metrics..."}
-                  disabled={extractedClaims.length === 0}
-                  className="flex-1 bg-transparent text-text-primary text-xs outline-none border-none placeholder-text-secondary"
-                  autoFocus
-                />
-                <button 
-                  onClick={() => setSearchOpen(false)}
-                  className="text-[10px] font-mono border border-border bg-bg px-2 py-0.5 rounded text-text-secondary cursor-pointer hover:bg-border/30"
-                >
-                  ESC
-                </button>
-              </div>
+              <Command className="w-full flex flex-col">
+                <div className="flex items-center border-b border-border px-4 py-3 gap-3">
+                  <Search className="w-4 h-4 text-text-secondary" />
+                  <Command.Input 
+                    value={searchQuery}
+                    onValueChange={setSearchQuery}
+                    placeholder={extractedClaims.length > 0 ? "Type a financial line item or claim ID..." : "Load a file first to search metrics..."}
+                    disabled={extractedClaims.length === 0}
+                    className="flex-1 bg-transparent text-text-primary text-xs outline-none border-none placeholder-text-secondary"
+                    autoFocus
+                  />
+                  <button 
+                    onClick={() => setSearchOpen(false)}
+                    className="text-[10px] font-mono border border-border bg-bg px-2 py-0.5 rounded text-text-secondary cursor-pointer hover:bg-border/30"
+                  >
+                    ESC
+                  </button>
+                </div>
 
-              <div className="max-h-72 overflow-y-auto p-2">
-                {extractedClaims.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-text-secondary">
-                    No active metrics loaded. Please upload a document or load sample filing first.
-                  </div>
-                ) : filteredClaims.length > 0 ? (
-                  <div className="flex flex-col">
-                    {filteredClaims.map((claim) => (
-                      <button
-                        key={`palette-${claim.id}`}
-                        onClick={() => {
-                          handleSelectClaim(claim.id);
-                          setSearchOpen(false);
-                        }}
-                        className="flex items-center justify-between p-2.5 hover:bg-bg rounded-md text-left transition-colors cursor-pointer w-full text-xs"
-                      >
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-semibold text-text-primary">{claim.metric}</span>
-                          <span className="font-mono text-[10px] text-text-secondary">Claim {claim.id.replace("claim-", "")} | Page {claim.page}</span>
-                        </div>
-                        <span className="font-mono font-bold text-text-primary bg-bg border border-border px-2 py-0.5 rounded text-[11px]">
-                          {claim.reported}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-8 text-center text-xs text-text-secondary">
+                <Command.List className="max-h-72 overflow-y-auto p-2">
+                  <Command.Empty className="py-8 text-center text-xs text-text-secondary font-sans">
                     No matching financial metrics found.
-                  </div>
-                )}
-              </div>
+                  </Command.Empty>
+
+                  {extractedClaims.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-text-secondary font-sans">
+                      No active metrics loaded. Please upload a document or load sample filing first.
+                    </div>
+                  ) : (
+                    <Command.Group heading="Financial Claims" className="text-[10px] text-text-secondary uppercase px-2 py-1 font-semibold tracking-wider font-sans">
+                      {filteredClaims.map((claim) => (
+                        <Command.Item
+                          key={claim.id}
+                          value={`${claim.metric} ${claim.reported} ${claim.id}`}
+                          onSelect={() => {
+                            handleSelectClaim(claim.id);
+                            setSearchOpen(false);
+                          }}
+                          className="flex items-center justify-between p-2.5 hover:bg-bg rounded-md text-left transition-colors cursor-pointer w-full text-xs data-[selected=true]:bg-slate-100/85 data-[selected=true]:text-text-primary font-sans select-none"
+                        >
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-text-primary">{claim.metric}</span>
+                            <span className="font-mono text-[10px] text-text-secondary">Claim {claim.id.replace("claim-", "")} | Page {claim.page}</span>
+                          </div>
+                          <span className="font-mono font-bold text-text-primary bg-bg border border-border px-2 py-0.5 rounded text-[11px]">
+                            {claim.reported}
+                          </span>
+                        </Command.Item>
+                      ))}
+                    </Command.Group>
+                  )}
+                </Command.List>
+              </Command>
             </motion.div>
           </div>
         )}
