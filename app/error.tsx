@@ -15,23 +15,23 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-[#F7F8FA] p-6 font-sans text-slate-800">
-      <div className="max-w-md w-full bg-white border border-slate-200 rounded-lg p-8 shadow-md text-center space-y-6">
-        <div className="w-12 h-12 bg-red-50/50 rounded-full flex items-center justify-center text-red-600 border border-red-100 mx-auto">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-bg p-6 font-sans text-text-primary">
+      <div className="max-w-md w-full bg-panel border border-border rounded-lg p-8 shadow-md text-center space-y-6">
+        <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 border border-red-500/20 mx-auto">
           <AlertTriangle className="w-6 h-6" />
         </div>
         
         <div className="space-y-2">
-          <h2 className="text-base font-bold text-slate-900 uppercase tracking-wide font-sans">
+          <h2 className="text-base font-bold text-text-primary uppercase tracking-wide font-sans">
             Application Error Encountered
           </h2>
-          <p className="text-xs text-slate-500 leading-relaxed font-sans">
+          <p className="text-xs text-text-secondary leading-relaxed font-sans">
             An unexpected error occurred in the Decimallens layout engine. You can attempt to reset the application state or reload the current filing.
           </p>
         </div>
 
         {error.message && (
-          <div className="bg-slate-50 border border-slate-100 p-3 rounded font-mono text-[10px] text-left text-slate-500 break-all overflow-auto max-h-32">
+          <div className="bg-muted/30 border border-border p-3 rounded font-mono text-[10px] text-left text-text-secondary break-all overflow-auto max-h-32">
             {error.message}
           </div>
         )}
@@ -39,13 +39,13 @@ export default function Error({
         <div className="flex gap-2 w-full">
           <button
             onClick={() => window.location.reload()}
-            className="flex-1 border border-slate-200 bg-white text-slate-700 text-xs font-semibold py-2.5 rounded-md hover:bg-slate-50 transition-all cursor-pointer shadow-sm font-sans"
+            className="flex-1 border border-border bg-panel text-text-secondary text-xs font-semibold py-2.5 rounded-md hover:bg-bg transition-all cursor-pointer shadow-sm font-sans"
           >
             Reload Window
           </button>
           <button
             onClick={() => reset()}
-            className="flex-1 bg-[#1E3A5F] text-white text-xs font-semibold py-2.5 rounded-md hover:bg-opacity-90 transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5 font-sans"
+            className="flex-1 bg-accent-navy text-white text-xs font-semibold py-2.5 rounded-md hover:bg-opacity-90 transition-all cursor-pointer shadow-sm flex items-center justify-center gap-1.5 font-sans"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Reset State

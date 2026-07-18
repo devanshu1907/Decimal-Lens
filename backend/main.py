@@ -31,7 +31,7 @@ else:
     load_dotenv()
 
 from backend.parser import parse_document
-from backend.evaluator import verify_claim
+from backend.evaluator import verify_claim, cross_validate_claims
 from backend.agents import (
     get_groq_client,
     DEFAULT_MODEL,
@@ -320,9 +320,14 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                 **claim,
                 "verified": ver_res["verified"],
                 "recalculated": ver_res["recalculated"],
-                "reason": ver_res["reason"]
+                "reason": ver_res["reason"],
+                "confidence_tier": ver_res.get("confidence_tier"),
+                "relative_error_bps": ver_res.get("relative_error_bps"),
             }
             verified_claims.append(verified_claim)
+        
+        # Cross-footing: check inter-claim consistency
+        verified_claims = cross_validate_claims(verified_claims)
             
         yield f"event: verified_claims\ndata: {json.dumps({'claims': verified_claims})}\n\n"
         await asyncio.sleep(0.5)
@@ -412,9 +417,14 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                     **claim,
                     "verified": ver_res["verified"],
                     "recalculated": ver_res["recalculated"],
-                    "reason": ver_res["reason"]
+                    "reason": ver_res["reason"],
+                    "confidence_tier": ver_res.get("confidence_tier"),
+                    "relative_error_bps": ver_res.get("relative_error_bps"),
                 }
                 verified_claims.append(verified_claim)
+            
+            # Cross-footing: check inter-claim consistency
+            verified_claims = cross_validate_claims(verified_claims)
                 
             yield f"event: verified_claims\ndata: {json.dumps({'claims': verified_claims})}\n\n"
             
@@ -481,7 +491,7 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
         mock_forecaster = copy.deepcopy(MOCK_FORECASTER_OUTPUT)
         
         # Adjust confidence level if all claims happen to be verified
-        if all(c.get("verified", False) for c in claims) and not low_confidence_baseline:
+        if all((c.get("verified", False) if isinstance(c, dict) else getattr(c, "verified", False)) for c in claims) and not low_confidence_baseline:
             mock_forecaster["confidence"] = "High"
             mock_forecaster["risk_assessment"] = "All calculations are verified and clean."
             projections = []
@@ -510,7 +520,7 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
             yield f"event: status\ndata: {json.dumps({'status': 'Forecasting projections...'})}\n\n"
             
             forecaster_input = {
-                "claims": claims,
+                "claims": [c.model_dump() if hasattr(c, 'model_dump') else (c.dict() if hasattr(c, 'dict') else c) for c in claims],
                 "low_confidence_baseline": low_confidence_baseline
             }
             

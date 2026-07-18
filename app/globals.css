@@ -35,6 +35,7 @@
   --color-text-secondary: var(--text-secondary);
   --color-accent-navy: var(--accent-navy);
   --color-verified: var(--verified);
+  --color-verified-bg: var(--verified-bg);
   --color-flagged: var(--flagged);
   --color-flagged-bg: var(--flagged-bg);
 
@@ -77,8 +78,43 @@
   --text-secondary: #64748B;
   --accent-navy: #1E3A5F;
   --verified: #15803D;
+  --verified-bg: #E8F5E9;
   --flagged: #B45309;
   --flagged-bg: #FEF3C7;
+}
+
+.dark {
+  /* Shadcn variables - dark mode */
+  --background: #0F172A;
+  --foreground: #F7F8FA;
+  --card: #1E293B;
+  --card-foreground: #F7F8FA;
+  --popover: #1E293B;
+  --popover-foreground: #F7F8FA;
+  --primary: #60A5FA;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1E293B;
+  --secondary-foreground: #F7F8FA;
+  --muted: #1E293B;
+  --muted-foreground: #94A3B8;
+  --accent: #1E293B;
+  --accent-foreground: #F7F8FA;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #334155;
+  --input: #334155;
+  --ring: #60A5FA;
+
+  /* Project Design Tokens - Dark Mode */
+  --bg: #0F172A;
+  --panel: #1E293B;
+  --text-primary: #F7F8FA;
+  --text-secondary: #94A3B8;
+  --accent-navy: #60A5FA;
+  --verified: #22C55E;
+  --verified-bg: #142F19;
+  --flagged: #F59E0B;
+  --flagged-bg: #2D2214;
 }
 
 @keyframes citation-flash {

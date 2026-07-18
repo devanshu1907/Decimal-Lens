@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -11,11 +13,19 @@ import {
   Sparkles, 
   Info,
   Database,
-  History
+  History,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Loader2
 } from "lucide-react";
-import dynamic from "next/dynamic";
+import nextDynamic from "next/dynamic";
 
-const PdfViewer = dynamic(() => import("../components/PdfViewer"), {
+import { ThemeProvider } from "@/components/ThemeProviderClient";
+import { ThemeToggle } from "@/components/ThemeToggle";
+
+const PdfViewer = nextDynamic(() => import("../components/PdfViewer"), {
   ssr: false,
 });
 
@@ -40,6 +50,11 @@ interface Claim {
   page: number;
   context: string;
   reason?: string;
+  confidence_tier?: string;
+  relative_error_bps?: string;
+  faithfulness_score?: string;
+  tolerance_used?: string;
+  n_operands?: number;
 }
 
 interface ForecasterResponse {
@@ -94,12 +109,12 @@ const StreamingBox = ({ title, text }: { title: string; text: string }) => {
   }, [text]);
 
   return (
-    <div className="border border-border bg-[#F8FAFC] rounded-md p-4 font-mono text-[10px] text-slate-800 max-h-[220px] overflow-y-auto shadow-inner flex flex-col gap-2">
-      <div className="flex items-center justify-between border-b border-border pb-2 mb-2 sticky top-0 bg-[#F8FAFC]">
-        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-sans font-semibold">{title}</span>
+    <div className="border border-border bg-bg/50 backdrop-blur-sm rounded-md p-4 font-mono text-[10px] text-text-primary max-h-[220px] overflow-y-auto shadow-inner flex flex-col gap-2">
+      <div className="flex items-center justify-between border-b border-border pb-2 mb-2 sticky top-0 bg-bg/95">
+        <span className="text-[9px] uppercase tracking-wider text-text-secondary font-sans font-semibold">{title}</span>
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[9px] text-slate-400 font-sans">Streaming Agent reasoning...</span>
+          <span className="text-[9px] text-text-secondary font-sans">Streaming Agent reasoning...</span>
         </div>
       </div>
       <pre className="whitespace-pre-wrap leading-relaxed font-mono">
@@ -113,19 +128,19 @@ const TableSkeleton = () => {
   return (
     <div className="border border-border rounded-md overflow-hidden bg-panel shadow-sm animate-pulse">
       <div className="bg-bg border-b border-border p-3 flex gap-4">
-        <div className="h-3.5 w-10 bg-slate-200 rounded" />
-        <div className="h-3.5 w-32 bg-slate-200 rounded" />
-        <div className="h-3.5 w-20 bg-slate-200 rounded" />
-        <div className="h-3.5 w-16 bg-slate-200 rounded" />
+        <div className="h-3.5 w-10 bg-muted rounded" />
+        <div className="h-3.5 w-32 bg-muted rounded" />
+        <div className="h-3.5 w-20 bg-muted rounded" />
+        <div className="h-3.5 w-16 bg-muted rounded" />
       </div>
       <div className="p-3 space-y-4">
         {[1, 2, 3, 4].map(idx => (
           <div key={idx} className="flex gap-4 items-center">
-            <div className="h-2.5 w-8 bg-slate-200 rounded" />
-            <div className="h-3 w-40 bg-slate-200 rounded" />
-            <div className="h-3 w-24 bg-slate-200 rounded" />
-            <div className="h-3.5 w-12 bg-slate-100 rounded" />
-            <div className="h-2.5 w-10 bg-slate-200 rounded ml-auto" />
+            <div className="h-2.5 w-8 bg-muted rounded" />
+            <div className="h-3 w-40 bg-muted rounded" />
+            <div className="h-3 w-24 bg-muted rounded" />
+            <div className="h-3.5 w-12 bg-muted/60 rounded" />
+            <div className="h-2.5 w-10 bg-muted rounded ml-auto" />
           </div>
         ))}
       </div>
@@ -136,26 +151,252 @@ const TableSkeleton = () => {
 const ForecastSkeleton = () => {
   return (
     <div className="space-y-4 animate-pulse mt-2">
-      <div className="border border-slate-200 rounded-md p-4 bg-slate-50 space-y-2">
-        <div className="h-3.5 w-32 bg-slate-200 rounded" />
-        <div className="h-3 w-full bg-slate-200 rounded" />
-        <div className="h-3 w-5/6 bg-slate-200 rounded" />
+      <div className="border border-border rounded-md p-4 bg-muted/30 space-y-2">
+        <div className="h-3.5 w-32 bg-muted rounded" />
+        <div className="h-3 w-full bg-muted rounded" />
+        <div className="h-3 w-5/6 bg-muted rounded" />
       </div>
       
       <div className="border border-border rounded-md overflow-hidden bg-panel shadow-sm">
         <div className="bg-bg border-b border-border p-3 flex justify-between">
-          <div className="h-3.5 w-28 bg-slate-200 rounded" />
-          <div className="h-3.5 w-16 bg-slate-200 rounded" />
+          <div className="h-3.5 w-28 bg-muted rounded" />
+          <div className="h-3.5 w-16 bg-muted rounded" />
         </div>
         <div className="p-3 space-y-4">
           {[1, 2, 3].map(idx => (
             <div key={idx} className="flex gap-4">
-              <div className="h-3 w-20 bg-slate-200 rounded" />
-              <div className="h-3 w-24 bg-slate-200 rounded" />
-              <div className="h-3 w-24 bg-slate-200 rounded" />
-              <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+              <div className="h-3 w-20 bg-muted rounded" />
+              <div className="h-3 w-24 bg-muted rounded" />
+              <div className="h-3 w-24 bg-muted rounded" />
+              <div className="h-3 w-16 bg-muted rounded ml-auto" />
             </div>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TextDocumentViewer = ({
+  text,
+  currentPage,
+  onPageChange,
+  activeClaim,
+  isFlashing,
+  fileName
+}: {
+  text: string;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  activeClaim: Claim | undefined;
+  isFlashing: string | null;
+  fileName: string;
+}) => {
+  const [scale, setScale] = useState(1.0);
+  
+  const pages = useMemo(() => {
+    if (!text) return [];
+    
+    // Split by form feeds if available
+    if (text.includes('\f')) {
+      return text.split('\f').map(p => p.trim()).filter(Boolean);
+    }
+    
+    // Fallback: split into pages of 32 lines
+    const lines = text.split(/\n/);
+    const result: string[] = [];
+    const linesPerPage = 32;
+    
+    for (let i = 0; i < lines.length; i += linesPerPage) {
+      result.push(lines.slice(i, i + linesPerPage).join('\n'));
+    }
+    return result;
+  }, [text]);
+
+  const numPages = pages.length;
+  const pageIndex = Math.min(numPages - 1, Math.max(0, currentPage - 1));
+  const currentPageText = pages[pageIndex] || "";
+
+  // Highlight context inside the current page text
+  const renderedPageContent = useMemo(() => {
+    const citation = activeClaim?.context;
+    if (!citation || activeClaim?.page !== (pageIndex + 1)) {
+      return (
+        <pre className="whitespace-pre-wrap font-mono text-[11px] text-slate-800 leading-relaxed max-w-full">
+          {currentPageText}
+        </pre>
+      );
+    }
+
+    const citationTrimmed = citation.trim();
+    const citationLower = citationTrimmed.toLowerCase();
+    const pageTextLower = currentPageText.toLowerCase();
+    const index = pageTextLower.indexOf(citationLower);
+    
+    if (index === -1) {
+      return (
+        <pre className="whitespace-pre-wrap font-mono text-[11px] text-slate-800 leading-relaxed max-w-full">
+          {currentPageText}
+        </pre>
+      );
+    }
+
+    const matchLen = citationTrimmed.length;
+    const before = currentPageText.substring(0, index);
+    const match = currentPageText.substring(index, index + matchLen);
+    const after = currentPageText.substring(index + matchLen);
+    
+    return (
+      <pre className="whitespace-pre-wrap font-mono text-[11px] text-slate-800 leading-relaxed max-w-full">
+        {before}
+        <span
+          className={`bg-flagged-bg border-l-2 border-flagged font-bold px-1 py-0.5 rounded text-text-primary transition-all inline shadow-sm ${
+            isFlashing ? "animate-citation-flash" : ""
+          }`}
+        >
+          {match}
+        </span>
+        {after}
+      </pre>
+    );
+  }, [currentPageText, activeClaim, isFlashing, pageIndex]);
+
+  const changePage = (offset: number) => {
+    const newPage = currentPage + offset;
+    if (newPage >= 1 && newPage <= numPages) {
+      onPageChange(newPage);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center w-full h-full bg-bg relative">
+      {/* Viewer toolbar */}
+      <div className="w-full h-10 border-b border-border bg-panel flex items-center justify-between px-4 sticky top-0 z-10 shrink-0 select-none">
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => changePage(-1)}
+            disabled={currentPage <= 1}
+            className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="text-[11px] font-sans font-medium text-text-primary font-mono">
+            Page {currentPage} of {numPages}
+          </span>
+          <button
+            onClick={() => changePage(1)}
+            disabled={currentPage >= numPages}
+            className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}
+            className="p-1 rounded hover:bg-muted text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[10px] font-mono font-medium text-text-secondary w-10 text-center select-none">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            onClick={() => setScale((s) => Math.min(2.0, s + 0.1))}
+            className="p-1 rounded hover:bg-muted text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Page Container */}
+      <div className="flex-1 w-full overflow-auto flex justify-center p-6 bg-bg min-h-0">
+        <div 
+          className="bg-white text-slate-900 border border-slate-200 shadow-md rounded-md p-10 max-w-2xl w-full h-fit transition-transform duration-150 ease-out origin-top font-mono"
+          style={{ transform: `scale(${scale})` }}
+        >
+          <div className="border-b border-slate-200 pb-3 mb-6 flex justify-between items-center text-[9px] uppercase tracking-wider text-slate-400 font-sans">
+            <span>{fileName}</span>
+            <span>Ingested Document Page</span>
+          </div>
+          
+          <div className="min-h-[500px]">
+            {renderedPageContent}
+          </div>
+          
+          <div className="border-t border-slate-100 pt-3 mt-6 flex justify-between items-center text-[9px] text-slate-400 font-sans">
+            <span>DecimalLens Viewer</span>
+            <span>Page {currentPage} of {numPages}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CsvDocumentViewer = ({
+  parsedCsv,
+  renderedCsvTable,
+  fileName
+}: {
+  parsedCsv: string[][] | null;
+  renderedCsvTable: React.ReactNode;
+  fileName: string;
+}) => {
+  const [scale, setScale] = useState(1.0);
+
+  return (
+    <div className="flex flex-col items-center w-full h-full bg-bg relative">
+      {/* Viewer toolbar */}
+      <div className="w-full h-10 border-b border-border bg-panel flex items-center justify-between px-4 sticky top-0 z-10 shrink-0 select-none">
+        <div className="flex items-center gap-1.5 text-[11px] font-sans font-medium text-text-primary">
+          <span>Sheet Preview</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}
+            className="p-1 rounded hover:bg-muted text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            title="Zoom Out"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          <span className="text-[10px] font-mono font-medium text-text-secondary w-10 text-center select-none">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            onClick={() => setScale((s) => Math.min(2.0, s + 0.1))}
+            className="p-1 rounded hover:bg-muted text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            title="Zoom In"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Sheet Container */}
+      <div className="flex-1 w-full overflow-auto flex justify-center p-6 bg-bg min-h-0">
+        <div 
+          className="bg-white text-slate-900 border border-slate-200 shadow-md rounded-md p-10 max-w-4xl w-full h-fit transition-transform duration-150 ease-out origin-top font-sans"
+          style={{ transform: `scale(${scale})` }}
+        >
+          <div className="border-b border-slate-200 pb-3 mb-6 flex justify-between items-center text-[9px] uppercase tracking-wider text-slate-400 font-sans">
+            <span>{fileName}</span>
+            <span>Spreadsheet Ingestion View</span>
+          </div>
+          
+          <div className="min-h-[500px]">
+            {renderedCsvTable}
+          </div>
+          
+          <div className="border-t border-slate-100 pt-3 mt-6 flex justify-between items-center text-[9px] text-slate-400 font-sans">
+            <span>DecimalLens Viewer</span>
+            <span>1 Sheet | {parsedCsv?.length || 0} Rows</span>
+          </div>
         </div>
       </div>
     </div>
@@ -176,6 +417,9 @@ export default function Page() {
 
   // Backend Integration States
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [targetProgress, setTargetProgress] = useState(0);
   const [statusText, setStatusText] = useState("");
   const [parsedText, setParsedText] = useState<string | null>(null);
   const [lowConfidence, setLowConfidence] = useState(false);
@@ -202,6 +446,7 @@ export default function Page() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const highlightRef = useRef<HTMLSpanElement | null>(null);
+  const leftPaneScrollRef = useRef<HTMLDivElement | null>(null);
   const claimsRef = useRef<Claim[]>([]);
 
 
@@ -243,12 +488,12 @@ export default function Page() {
       cell: (info) => {
         const verified = info.getValue();
         return verified ? (
-          <span className="inline-flex items-center gap-1 bg-[#E8F5E9] text-verified text-[9px] font-bold px-1.5 py-0.5 rounded border border-verified/10">
+          <span className="inline-flex items-center gap-1 bg-verified-bg text-verified text-[9px] font-bold px-1.5 py-0.5 rounded border border-verified/10">
             <CheckCircle2 className="w-2.5 h-2.5" />
             OK
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 bg-[#FEF3C7] text-flagged text-[9px] font-bold px-1.5 py-0.5 rounded border border-flagged/10 animate-pulse">
+          <span className="inline-flex items-center gap-1 bg-flagged-bg text-flagged text-[9px] font-bold px-1.5 py-0.5 rounded border border-flagged/10 animate-pulse">
             <AlertTriangle className="w-2.5 h-2.5" />
             Flagged
           </span>
@@ -312,7 +557,7 @@ export default function Page() {
         const val = info.getValue();
         const isHighRisk = val.toLowerCase().includes("high");
         return (
-          <span className={`font-sans font-medium ${isHighRisk ? "text-[#B45309]" : "text-verified"}`}>
+          <span className={`font-sans font-medium ${isHighRisk ? "text-flagged" : "text-verified"}`}>
             {val}
           </span>
         );
@@ -331,6 +576,57 @@ export default function Page() {
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
+
+  // 1. Smoothly increment progress towards targetProgress
+  useEffect(() => {
+    if (!showLoadingOverlay) return;
+    
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev < targetProgress) {
+          const diff = targetProgress - prev;
+          const step = Math.max(1, Math.min(5, Math.ceil(diff / 8)));
+          return Math.min(targetProgress, prev + step);
+        } else if (prev < 99 && isAnalyzing) {
+          // Slow creep if target reached but still analyzing
+          return prev + 0.2;
+        }
+        return prev;
+      });
+    }, 80);
+    
+    return () => clearInterval(interval);
+  }, [showLoadingOverlay, targetProgress, isAnalyzing]);
+
+  // 2. Map statusText to target progress milestones
+  useEffect(() => {
+    if (!isAnalyzing) return;
+    
+    const txt = statusText.toLowerCase();
+    if (txt.includes("ingest") || txt.includes("parse")) {
+      setTargetProgress(20);
+    } else if (txt.includes("initializing") || txt.includes("pipeline")) {
+      setTargetProgress(30);
+    } else if (txt.includes("auditing") || txt.includes("extracting")) {
+      setTargetProgress(55);
+    } else if (txt.includes("verifying") || txt.includes("math") || txt.includes("calculation")) {
+      setTargetProgress(75);
+    } else if (txt.includes("forecasting") || txt.includes("projection")) {
+      setTargetProgress(90);
+    }
+  }, [statusText, isAnalyzing]);
+
+  // 3. Hold 100% progress for a moment before fading out
+  useEffect(() => {
+    if (progress >= 100) {
+      const timer = setTimeout(() => {
+        setShowLoadingOverlay(false);
+        setProgress(0);
+        setTargetProgress(0);
+      }, 700);
+      return () => clearTimeout(timer);
+    }
+  }, [progress]);
 
   // Load sessions from localStorage
   useEffect(() => {
@@ -382,7 +678,7 @@ export default function Page() {
     }
   };
 
-  const runForecastStream = async (claims: Claim[]) => {
+  const runForecastStream = async (claims: Claim[], keepProgress: boolean = false) => {
     if (claims.length === 0) {
       setForecasterResponse(null);
       setForecasterText("");
@@ -393,6 +689,14 @@ export default function Page() {
     setStatusText("Forecasting projections based on updated claims...");
     setForecasterResponse(null);
     setForecasterText("");
+    
+    if (!keepProgress) {
+      setShowLoadingOverlay(true);
+      setProgress(0);
+      setTargetProgress(15);
+    } else {
+      setTargetProgress(80);
+    }
     
     try {
       const response = await fetch("/api/forecast", {
@@ -450,8 +754,11 @@ export default function Page() {
                 setForecasterResponse(data.forecaster_response);
                 // Save updated session
                 saveSession(claims, data.forecaster_response);
+                setTargetProgress(100);
               } else if (eventType === "error") {
                 setErrorMsg(data.message);
+                setShowLoadingOverlay(false);
+                setProgress(0);
               }
             } catch (e) {
               console.error("Failed to parse SSE event data:", e, eventData);
@@ -462,6 +769,8 @@ export default function Page() {
     } catch (err) {
       console.error(err);
       setErrorMsg((err as Error).message || "Error running forecast stream.");
+      setShowLoadingOverlay(false);
+      setProgress(0);
     } finally {
       setIsAnalyzing(false);
       setStatusText("");
@@ -540,6 +849,9 @@ export default function Page() {
       return;
     }
     
+    setShowLoadingOverlay(true);
+    setProgress(0);
+    setTargetProgress(30);
     setIsAnalyzing(true);
     setStatusText("Verifying calculation math...");
     try {
@@ -557,6 +869,7 @@ export default function Page() {
       }
       
       const verifyData = await verifyRes.json();
+      setTargetProgress(65);
       const claim = extractedClaims.find((c) => c.id === selectedClaimId);
 
       // Guard: if the user is editing (not adding) but the claim was removed
@@ -596,11 +909,13 @@ export default function Page() {
       setIsAddingClaim(false);
       
       // Auto-trigger re-forecast
-      await runForecastStream(nextClaims);
+      await runForecastStream(nextClaims, true);
       
     } catch (err) {
       console.error(err);
       alert((err as Error).message || "Failed to save claim.");
+      setShowLoadingOverlay(false);
+      setProgress(0);
       setIsAnalyzing(false);
       setStatusText("");
     }
@@ -621,11 +936,18 @@ export default function Page() {
     
     // Auto-trigger re-forecast
     try {
-      await runForecastStream(nextClaims);
+      setIsAnalyzing(true);
+      setStatusText("Recalculating forecast after claim deletion...");
+      setShowLoadingOverlay(true);
+      setProgress(0);
+      setTargetProgress(20);
+      await runForecastStream(nextClaims, true);
     } catch (err) {
       // runForecastStream has its own internal try/catch but if the fetch
       // itself throws (network down), we must still recover the UI state.
       setErrorMsg((err as Error).message || "Forecast failed after deletion.");
+      setShowLoadingOverlay(false);
+      setProgress(0);
       setIsAnalyzing(false);
       setStatusText("");
     }
@@ -646,13 +968,29 @@ export default function Page() {
 
   // Scroll to highlight element when selected claim changes
   useEffect(() => {
-    if (highlightRef.current) {
-      highlightRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }
-  }, [selectedClaimId, activeAgent]);
+    if (!selectedClaimId) return;
+    
+    // Use a small timeout to allow React to render the new highlighted span first
+    const timer = setTimeout(() => {
+      if (highlightRef.current && leftPaneScrollRef.current) {
+        const container = leftPaneScrollRef.current;
+        const element = highlightRef.current;
+        
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+        
+        const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+        const targetScrollTop = relativeTop - (containerRect.height / 2) + (elementRect.height / 2);
+        
+        container.scrollTo({
+          top: Math.max(0, targetScrollTop),
+          behavior: "smooth",
+        });
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, [selectedClaimId, activeAgent, parsedText]);
 
   const handleSelectClaim = (claimId: string) => {
     setSelectedClaimId(claimId);
@@ -680,6 +1018,9 @@ export default function Page() {
     setErrorMsg("");
     setSelectedClaimId(null);
     setCurrentPage(1);
+    setShowLoadingOverlay(true);
+    setProgress(0);
+    setTargetProgress(15);
     setIsAnalyzing(true);
 
     try {
@@ -697,6 +1038,9 @@ export default function Page() {
 
     setFileName(file.name);
     setStoredFileName(null); // will be set once upload response arrives
+    setShowLoadingOverlay(true);
+    setProgress(0);
+    setTargetProgress(10);
     setIsAnalyzing(true);
     setStatusText("Ingesting and parsing document...");
     setParsedText(null);
@@ -795,6 +1139,8 @@ export default function Page() {
     } catch (err) {
       console.error(err);
       setErrorMsg((err as Error).message || "Error reading analysis stream.");
+      setShowLoadingOverlay(false);
+      setProgress(0);
     } finally {
       setIsAnalyzing(false);
       setStatusText("");
@@ -819,6 +1165,7 @@ export default function Page() {
         case "verified_claims":
           setExtractedClaims(data.claims);
           claimsRef.current = data.claims;
+          setTargetProgress(80);
           if (data.claims && data.claims.length > 0) {
             setSelectedClaimId(data.claims[0].id);
             if (data.claims[0].page) {
@@ -832,9 +1179,12 @@ export default function Page() {
         case "done":
           setForecasterResponse(data.forecaster_response);
           saveSession(claimsRef.current, data.forecaster_response);
+          setTargetProgress(100);
           break;
         case "error":
           setErrorMsg(data.message);
+          setShowLoadingOverlay(false);
+          setProgress(0);
           break;
         default:
           break;
@@ -894,7 +1244,7 @@ export default function Page() {
         {before}
         <span
           ref={highlightRef}
-          className={`bg-[#FEF3C7] border-l-2 border-[#B45309] font-bold px-1 py-0.5 rounded text-[#0F172A] transition-all inline shadow-sm ${
+          className={`bg-flagged-bg border-l-2 border-flagged font-bold px-1 py-0.5 rounded text-text-primary transition-all inline shadow-sm ${
             isFlashing ? "animate-citation-flash" : ""
           }`}
         >
@@ -905,9 +1255,110 @@ export default function Page() {
     );
   }, [parsedText, activeClaim, isFlashing]);
 
+  // Helper to parse CSV lines safely
+  const parsedCsv = useMemo(() => {
+    if (!parsedText || !fileName?.toLowerCase().endsWith('.csv')) return null;
+    
+    // Check if the parsedText is actually a Markdown table from the backend parser
+    if (parsedText.trim().startsWith('|')) {
+      const lines = parsedText.split(/\r?\n/).filter(line => line.trim() !== '');
+      const parsedRows: string[][] = [];
+      
+      for (const line of lines) {
+        // Skip the table divider line (e.g. | --- | --- |)
+        if (line.includes('---')) continue;
+        
+        // Split by pipe and trim each cell
+        const parts = line.split('|').map(cell => cell.trim());
+        
+        // Since markdown table lines start and end with '|', parts[0] and parts[parts.length-1] will be empty strings.
+        if (parts.length >= 3) {
+          const cells = parts.slice(1, parts.length - 1);
+          parsedRows.push(cells);
+        }
+      }
+      return parsedRows;
+    }
+    
+    const lines = parsedText.split(/\r?\n/).filter(line => line.trim() !== '');
+    
+    return lines.map(line => {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    });
+  }, [parsedText, fileName]);
+
+  const renderedCsvTable = useMemo(() => {
+    if (!parsedCsv) return null;
+    
+    const activeMetric = activeClaim?.metric.toLowerCase();
+    const activeReported = activeClaim?.reported.toLowerCase();
+    
+    return (
+      <div className="w-full overflow-x-auto border border-border rounded-md bg-panel shadow-sm max-h-[500px]">
+        <table className="w-full border-collapse text-left text-xs font-sans">
+          <tbody>
+            {parsedCsv.map((row, rowIndex) => {
+              const rowText = row.join(" ").toLowerCase();
+              const isHeader = rowIndex === 0;
+              
+              const isMatchedRow = !isHeader && activeMetric && activeReported && 
+                (rowText.includes(activeMetric) || activeMetric.includes(rowText)) &&
+                row.some(cell => {
+                  const cleanCell = cell.toLowerCase().replace(/[\$,\s%()]/g, '');
+                  const cleanReported = activeReported.replace(/[\$,\s%()]/g, '');
+                  return cleanCell === cleanReported || cleanCell.includes(cleanReported) || cleanReported.includes(cleanCell);
+                });
+
+              return (
+                <tr 
+                  key={rowIndex} 
+                  className={`border-b border-border/50 transition-all duration-150 ${
+                    isHeader 
+                      ? "bg-bg font-bold text-text-primary border-b-2 border-border sticky top-0" 
+                      : isMatchedRow
+                        ? "bg-flagged-bg/20 border-l-4 border-flagged font-semibold text-text-primary shadow-sm"
+                        : "hover:bg-muted/30 text-text-secondary"
+                  }`}
+                >
+                  {row.map((cell, cellIndex) => (
+                    <td 
+                      key={cellIndex} 
+                      className={`p-3 whitespace-nowrap ${
+                        isHeader ? "text-[10px] uppercase tracking-wider font-semibold" : "text-[11.5px] font-mono"
+                      }`}
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }, [parsedCsv, activeClaim]);
+
   return (
-    <>
-      <div className="flex flex-col flex-1 h-screen overflow-hidden bg-bg print:hidden">
+    <ThemeProvider>
+      <>
+        <div className="flex flex-col flex-1 h-screen overflow-hidden bg-bg print:hidden">
       <input
         type="file"
         ref={fileInputRef}
@@ -944,17 +1395,17 @@ export default function Page() {
         <div className="flex items-center gap-3">
           {fileName ? (
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-[#F1F5F9] border border-border px-3 py-1 rounded-md text-xs font-medium text-text-primary">
+              <div className="flex items-center gap-2 bg-muted border border-border px-3 py-1 rounded-md text-xs font-medium text-text-primary">
                 <FileText className="w-3.5 h-3.5 text-accent-navy" />
                 <span className="font-mono text-[11px]">{fileName}</span>
               </div>
               
               {/* Export Findings Buttons */}
               {extractedClaims.length > 0 && (
-                <div className="flex items-center gap-1 bg-[#F1F5F9] border border-border p-1 rounded-md">
+                <div className="flex items-center gap-1 bg-muted border border-border p-1 rounded-md">
                   <button
                     onClick={exportToCsv}
-                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-slate-200/50 px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-border/30 px-2 py-1 rounded transition-all cursor-pointer font-sans"
                     title="Export verified claims and forecast projections to a CSV file"
                   >
                     CSV
@@ -962,7 +1413,7 @@ export default function Page() {
                   <span className="w-px h-3.5 bg-border" />
                   <button
                     onClick={handlePrint}
-                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-slate-200/50 px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-border/30 px-2 py-1 rounded transition-all cursor-pointer font-sans"
                     title="Print report card or save as PDF"
                   >
                     PDF / Print
@@ -996,6 +1447,7 @@ export default function Page() {
               Upload Document
             </button>
           )}
+          <ThemeToggle />
         </div>
       </header>
 
@@ -1003,7 +1455,7 @@ export default function Page() {
       <div className="two-pane-container flex-1">
         {/* Left Pane: Source Filing Document Viewer */}
         <div className="pane">
-          <div className="h-10 border-b border-border bg-[#FAFAFA] flex items-center justify-between px-4">
+          <div className="h-10 border-b border-border bg-panel flex items-center justify-between px-4">
             <span className="text-xs font-semibold text-text-primary font-sans">Source Document Viewer</span>
             {fileName && (
               <span className="text-[10px] font-mono text-text-secondary">
@@ -1012,9 +1464,12 @@ export default function Page() {
             )}
           </div>
 
-          <div className={`flex-1 overflow-y-auto flex flex-col items-center bg-zinc-100 relative ${fileName && fileName.toLowerCase().endsWith('.pdf') ? 'p-0 overflow-hidden' : 'p-8'}`}>
+          <div 
+            ref={leftPaneScrollRef}
+            className="flex-1 flex flex-col items-center bg-bg relative overflow-hidden p-0 w-full"
+          >
             {!fileName ? (
-              <div className="max-w-xl w-full flex flex-col gap-6 my-auto">
+              <div className="max-w-xl w-full flex flex-col gap-6 my-auto p-8">
                 <div className="border-2 border-dashed border-border rounded-lg bg-panel p-8 text-center flex flex-col items-center gap-4 shadow-sm">
                   <div className="w-12 h-12 bg-bg rounded-full flex items-center justify-center text-text-secondary border border-border">
                     <Upload className="w-6 h-6" />
@@ -1060,8 +1515,10 @@ export default function Page() {
                     </div>
                     <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto">
                       {recentSessions.map((session) => (
-                        <div
+                        <motion.div
                           key={session.id}
+                          whileHover={{ x: 2, scale: 1.008 }}
+                          transition={{ type: "tween", ease: "easeOut", duration: 0.15 }}
                           onClick={() => {
                             setFileName(session.fileName);
                             setStoredFileName(session.storedFileName ?? null);
@@ -1075,7 +1532,7 @@ export default function Page() {
                               setCurrentPage(session.extractedClaims[0].page || 1);
                             }
                           }}
-                          className="flex items-center justify-between p-3 bg-bg hover:bg-border/20 rounded-md border border-border/40 hover:border-border cursor-pointer transition-all"
+                          className="flex items-center justify-between p-3 bg-bg hover:bg-border/20 rounded-md border border-border/40 hover:border-border cursor-pointer transition-all shadow-sm"
                         >
                           <div className="flex items-center gap-2.5 overflow-hidden">
                             <FileText className="w-4 h-4 text-accent-navy shrink-0" />
@@ -1085,109 +1542,72 @@ export default function Page() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold font-mono bg-[#E8F5E9] text-verified">
+                            <span className="text-[9px] uppercase px-1.5 py-0.5 rounded font-bold font-mono bg-verified-bg text-verified">
                               {session.extractedClaims.filter(c => c.verified).length}/{session.extractedClaims.length} OK
                             </span>
                             {session.forecasterResponse && (
                               <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded font-bold font-mono ${
                                 session.forecasterResponse.confidence === "Low"
-                                  ? "bg-[#FEF3C7] text-flagged"
-                                  : "bg-[#E8F5E9] text-verified"
+                                  ? "bg-flagged-bg text-flagged"
+                                  : "bg-verified-bg text-verified"
                               }`}>
                                 {session.forecasterResponse.confidence}
                               </span>
                             )}
                           </div>
-                        </div>
+                        </motion.div>
                       ))}
                     </div>
                   </div>
                 )}
               </div>
+            ) : isAnalyzing && !parsedText ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16">
+                <div className="w-6 h-6 border-2 border-accent-navy border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs text-text-secondary font-mono">{statusText}</span>
+              </div>
             ) : fileName.toLowerCase().endsWith('.pdf') ? (
-              /* Ingested PDF View */
-              <div className="w-full h-full flex flex-col overflow-hidden relative">
-                {isAnalyzing && !parsedText ? (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16">
-                    <div className="w-6 h-6 border-2 border-accent-navy border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs text-text-secondary font-mono">{statusText}</span>
-                  </div>
-                ) : (
-                  <PdfViewer
-                    url={`/api/document/${storedFileName ?? fileName}`}
-                    currentPage={currentPage}
-                    onPageChange={(page) => setCurrentPage(page)}
-                  />
-                )}
-
-                {/* Floating active claim indicator */}
-                {activeClaim && (
-                  <motion.div 
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute bottom-4 left-4 right-4 bg-accent-navy text-white text-[11px] p-3 rounded-md flex items-center justify-between shadow-md z-10"
-                  >
-                    <span className="flex items-center gap-2 overflow-hidden mr-2">
-                      <Info className="w-3.5 h-3.5 text-blue-200 shrink-0" />
-                      <span className="font-sans truncate">
-                        Metric: <strong className="font-mono">{activeClaim.metric}</strong>
-                      </span>
-                    </span>
-                    <span className="bg-white/10 px-2 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
-                      Page {activeClaim.page}
-                    </span>
-                  </motion.div>
-                )}
-              </div>
+              <PdfViewer
+                url={`/api/document/${storedFileName ?? fileName}`}
+                currentPage={currentPage}
+                onPageChange={(page) => setCurrentPage(page)}
+                highlightText={activeClaim?.context}
+              />
+            ) : fileName.toLowerCase().endsWith('.csv') ? (
+              <CsvDocumentViewer
+                parsedCsv={parsedCsv}
+                renderedCsvTable={renderedCsvTable}
+                fileName={fileName}
+              />
             ) : (
-              /* Ingested CSV / Markdown View */
-              <div className="w-full max-w-2xl bg-panel border border-border shadow-md rounded-md p-8 min-h-[600px] flex flex-col relative font-sans text-xs leading-relaxed text-slate-800">
-                <div className="border-b border-border pb-4 mb-6">
-                  <h2 className="text-center font-bold text-sm tracking-tight text-text-primary uppercase truncate">
-                    {fileName}
-                  </h2>
-                  <div className="flex items-center justify-center gap-2 mt-1">
-                    <span className="text-[10px] text-text-secondary font-mono tracking-widest uppercase">
-                      Ingested Document
-                    </span>
-                    {lowConfidence && (
-                      <span className="text-[9px] font-sans font-semibold bg-[#FEF3C7] text-[#B45309] px-1.5 py-0.5 rounded border border-[#B45309]/20 animate-pulse">
-                        Layout Warning
-                      </span>
-                    )}
-                  </div>
-                </div>
+              <TextDocumentViewer
+                text={parsedText || ""}
+                currentPage={currentPage}
+                onPageChange={(page) => setCurrentPage(page)}
+                activeClaim={activeClaim}
+                isFlashing={isFlashing}
+                fileName={fileName}
+              />
+            )}
 
-                {isAnalyzing && !parsedText ? (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16">
-                    <div className="w-6 h-6 border-2 border-accent-navy border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs text-text-secondary font-mono">{statusText}</span>
-                  </div>
-                ) : (
-                  renderedParsedText
-                )}
-
-                {/* Floating active claim indicator */}
-                {activeClaim && (
-                  <motion.div 
-                    layout
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute bottom-4 left-4 right-4 bg-accent-navy text-white text-[11px] p-3 rounded-md flex items-center justify-between shadow-md z-10"
-                  >
-                    <span className="flex items-center gap-2 overflow-hidden mr-2">
-                      <Info className="w-3.5 h-3.5 text-blue-200 shrink-0" />
-                      <span className="font-sans truncate">
-                        Metric: <strong className="font-mono">{activeClaim.metric}</strong>
-                      </span>
-                    </span>
-                    <span className="bg-white/10 px-2 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
-                      Page {activeClaim.page}
-                    </span>
-                  </motion.div>
-                )}
-              </div>
+            {/* Floating active claim indicator (renders once for all viewer types) */}
+            {fileName && activeClaim && (
+              <motion.div 
+                layout
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="absolute bottom-4 left-4 right-4 bg-accent-navy text-white text-[11px] p-3 rounded-md flex items-center justify-between shadow-md z-10"
+              >
+                <span className="flex items-center gap-2 overflow-hidden mr-2">
+                  <Info className="w-3.5 h-3.5 text-blue-200 shrink-0" />
+                  <span className="font-sans truncate">
+                    Metric: <strong className="font-mono">{activeClaim.metric}</strong>
+                  </span>
+                </span>
+                <span className="bg-white/10 px-2 py-0.5 rounded text-[9px] font-mono font-bold shrink-0">
+                  Page {activeClaim.page}
+                </span>
+              </motion.div>
             )}
           </div>
         </div>
@@ -1196,28 +1616,38 @@ export default function Page() {
         <div className="pane">
           {/* Agent Navigation Tabs */}
           <div className="h-12 border-b border-border bg-bg flex items-center px-4 justify-between shrink-0">
-            <div className="flex gap-1.5">
+            <div className="flex gap-1 bg-border/40 p-0.5 rounded-lg relative z-0">
               <button
                 onClick={() => setActiveAgent("auditor")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  activeAgent === "auditor"
-                    ? "bg-panel text-accent-navy shadow-sm border border-border"
-                    : "text-text-secondary hover:text-text-primary"
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer z-10 ${
+                  activeAgent === "auditor" ? "text-accent-navy font-bold" : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-verified" />
-                Auditor Agent
+                <span>Auditor Agent</span>
+                {activeAgent === "auditor" && (
+                  <motion.div
+                    layoutId="activeAgentTab"
+                    className="absolute inset-0 bg-panel border border-border rounded-md shadow-sm -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
               </button>
               <button
                 onClick={() => setActiveAgent("forecaster")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all cursor-pointer ${
-                  activeAgent === "forecaster"
-                    ? "bg-panel text-accent-navy shadow-sm border border-border"
-                    : "text-text-secondary hover:text-text-primary"
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer z-10 ${
+                  activeAgent === "forecaster" ? "text-accent-navy font-bold" : "text-text-secondary hover:text-text-primary"
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5 text-accent-navy" />
-                Forecaster Agent
+                <span>Forecaster Agent</span>
+                {activeAgent === "forecaster" && (
+                  <motion.div
+                    layoutId="activeAgentTab"
+                    className="absolute inset-0 bg-panel border border-border rounded-md shadow-sm -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
               </button>
             </div>
 
@@ -1286,7 +1716,7 @@ export default function Page() {
 
                     {/* Status Alert while analyzing */}
                     {isAnalyzing && statusText && (
-                      <div className="border border-border bg-[#F8FAFC] rounded-md p-3 text-xs text-text-primary flex items-center gap-3">
+                      <div className="border border-border bg-muted/40 rounded-md p-3 text-xs text-text-primary flex items-center gap-3">
                         <div className="w-4 h-4 border-2 border-accent-navy border-t-transparent rounded-full animate-spin shrink-0" />
                         <span className="font-mono text-[11px]">{statusText}</span>
                       </div>
@@ -1311,7 +1741,12 @@ export default function Page() {
                     {extractedClaims.length > 0 || isAddingClaim ? (
                       <div className="flex flex-col gap-4">
                         {extractedClaims.length > 0 && (
-                          <div className="border border-border rounded-md overflow-hidden bg-panel shadow-sm">
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.25, ease: "easeOut" }}
+                            className="border border-border rounded-md overflow-hidden bg-panel shadow-sm"
+                          >
                             <table className="w-full border-collapse text-left text-xs">
                               <thead>
                                 {claimsTable.getHeaderGroups().map(headerGroup => (
@@ -1320,7 +1755,7 @@ export default function Page() {
                                       <th 
                                         key={header.id} 
                                         onClick={header.column.getToggleSortingHandler()}
-                                        className="p-3 text-[10px] uppercase font-bold text-text-secondary tracking-wider cursor-pointer hover:bg-slate-200/50 transition-all select-none"
+                                        className="p-3 text-[10px] uppercase font-bold text-text-secondary tracking-wider cursor-pointer hover:bg-border/30 transition-all select-none"
                                       >
                                         <div className="flex items-center gap-1">
                                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -1343,7 +1778,7 @@ export default function Page() {
                                       onClick={() => handleSelectClaim(row.original.id)}
                                       className={`cursor-pointer transition-all hover:bg-bg/40 ${
                                         isSelected 
-                                          ? "bg-slate-100/80 font-medium border-l-2 border-accent-navy" 
+                                          ? "bg-muted font-medium border-l-2 border-accent-navy" 
                                           : row.original.verified
                                             ? "bg-panel"
                                             : "bg-flagged-bg/5 hover:bg-flagged-bg/10"
@@ -1359,7 +1794,7 @@ export default function Page() {
                                 })}
                               </tbody>
                             </table>
-                          </div>
+                          </motion.div>
                         )}
 
                         {extractedClaims.length > 0 && !isAddingClaim && (
@@ -1513,50 +1948,116 @@ export default function Page() {
                                     {activeClaim!.id.toUpperCase()}
                                   </span>
                                 </div>
-                                
                                 <div className="flex flex-col gap-3 text-xs">
-                                  <div>
-                                    <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Reported Value</span>
-                                    <div className="font-mono font-bold text-text-primary text-[13px] mt-0.5">
-                                      {activeClaim!.reported}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Formula Check</span>
-                                    <div className="font-mono text-text-primary bg-bg px-2 py-1.5 rounded border border-border mt-1 whitespace-pre-wrap break-all leading-relaxed">
-                                      {activeClaim!.formula}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Filing Citation Context</span>
-                                    <div className="text-text-secondary italic mt-1 bg-slate-50 border border-slate-100 p-2.5 rounded leading-relaxed text-[11px]">
-                                      {"\""}{activeClaim!.context}{"\""}
-                                    </div>
-                                  </div>
-                                  
-                                  {!activeClaim!.verified && activeClaim!.reason && (
-                                    <div className="bg-flagged-bg/30 border border-flagged/10 rounded p-3 text-[11px] text-[#9A3412] leading-relaxed mt-1">
-                                      <strong>Auditor Notice:</strong> {activeClaim!.reason}
-                                    </div>
-                                  )}
+                                    <div className="grid grid-cols-2 gap-3 mb-1 bg-bg p-3 rounded-md border border-border">
+                                      <div className="col-span-2">
+                                        <div className="flex justify-between items-center text-[10px] uppercase font-semibold text-text-secondary">
+                                          <span>Math Faithfulness Score</span>
+                                          <span className="font-mono text-text-primary font-bold">
+                                            {activeClaim!.faithfulness_score 
+                                              ? `${(parseFloat(activeClaim!.faithfulness_score) * 100).toFixed(1)}%` 
+                                              : activeClaim!.verified ? "100.0%" : "0.0%"}
+                                          </span>
+                                        </div>
+                                        <div className="w-full bg-border h-1.5 rounded-full mt-1.5 overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-350 ${
+                                              activeClaim!.verified
+                                                ? "bg-verified"
+                                                : activeClaim!.faithfulness_score && parseFloat(activeClaim!.faithfulness_score) > 0.4
+                                                  ? "bg-flagged"
+                                                  : "bg-destructive"
+                                            }`}
+                                            style={{ 
+                                              width: `${
+                                                activeClaim!.faithfulness_score 
+                                                  ? Math.min(100, parseFloat(activeClaim!.faithfulness_score) * 100) 
+                                                  : activeClaim!.verified ? 100 : 0
+                                              }%` 
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
 
-                                  <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-border/40">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteClaim(activeClaim!.id)}
-                                      className="px-3 py-1.5 rounded border border-red-200 text-red-600 bg-panel hover:bg-red-50 transition-all font-semibold cursor-pointer text-[11px]"
-                                    >
-                                      Delete Claim
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={handleStartEdit}
-                                      className="px-4 py-1.5 rounded bg-accent-navy text-white hover:bg-opacity-90 transition-all font-semibold shadow-sm cursor-pointer text-[11px]"
-                                    >
-                                      Edit Claim
-                                    </button>
+                                      <div>
+                                        <span className="text-[9px] uppercase tracking-wider text-text-secondary block">Reported Value</span>
+                                        <div className="font-mono font-bold text-text-primary text-[12.5px] mt-0.5">
+                                          {activeClaim!.reported}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <span className="text-[9px] uppercase tracking-wider text-text-secondary block">Recalculated Value</span>
+                                        <div className="font-mono font-bold text-accent-navy text-[12.5px] mt-0.5">
+                                          {activeClaim!.recalculated || "N/A"}
+                                        </div>
+                                      </div>
+
+                                      {activeClaim!.confidence_tier && (
+                                        <div>
+                                          <span className="text-[9px] uppercase tracking-wider text-text-secondary block">Confidence Tier</span>
+                                          <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 border ${
+                                            activeClaim!.verified
+                                              ? "bg-verified-bg text-verified border-verified/10"
+                                              : activeClaim!.confidence_tier === "NEAR_MISS"
+                                                ? "bg-flagged-bg text-flagged border-flagged/10"
+                                                : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/10 animate-pulse"
+                                          }`}>
+                                            {activeClaim!.confidence_tier.replace("_", " ")}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {activeClaim!.tolerance_used && (
+                                        <div>
+                                          <span className="text-[9px] uppercase tracking-wider text-text-secondary block">Tolerance Bound</span>
+                                          <span className="font-mono text-[10px] font-semibold text-text-primary block mt-1">
+                                            ±{activeClaim!.tolerance_used}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div>
+                                      <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Formula Check</span>
+                                      <div className="font-mono text-text-primary bg-bg px-2 py-1.5 rounded border border-border mt-1 whitespace-pre-wrap break-all leading-relaxed">
+                                        {activeClaim!.formula}
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <span className="text-[10px] uppercase tracking-wider text-text-secondary block">Filing Citation Context</span>
+                                      <div className="text-text-secondary italic mt-1 bg-muted/40 border border-border p-2.5 rounded leading-relaxed text-[11px]">
+                                        {"\""}{activeClaim!.context}{"\""}
+                                      </div>
+                                    </div>
+                                    
+                                    {activeClaim!.reason && (
+                                      <div className={`border rounded p-3 text-[11px] leading-relaxed mt-1 ${
+                                        activeClaim!.verified 
+                                          ? "bg-verified-bg/30 border-verified/15 text-verified" 
+                                          : "bg-flagged-bg/30 border-flagged/15 text-flagged"
+                                      }`}>
+                                        <strong>Auditor Notice:</strong> {activeClaim!.reason}
+                                      </div>
+                                    )}
+
+                                    <div className="flex justify-end gap-2 mt-2 pt-2 border-t border-border/40">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteClaim(activeClaim!.id)}
+                                        className="px-3 py-1.5 rounded border border-red-500/20 text-red-600 dark:text-red-400 bg-transparent hover:bg-red-500/10 transition-all font-semibold cursor-pointer text-[11px]"
+                                      >
+                                        Delete Claim
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleStartEdit}
+                                        className="px-4 py-1.5 rounded bg-accent-navy text-white hover:bg-opacity-90 transition-all font-semibold shadow-sm cursor-pointer text-[11px]"
+                                      >
+                                        Edit Claim
+                                      </button>
+                                    </div>
                                   </div>
-                                </div>
                               </>
                             )}
                           </motion.div>
@@ -1637,7 +2138,7 @@ export default function Page() {
                         {/* Status alert for Forecaster */}
                         {isAnalyzing && !forecasterResponse && (
                           <>
-                            <div className="border border-border bg-[#F8FAFC] rounded-md p-3 text-xs text-text-primary flex items-center gap-3">
+                            <div className="border border-border bg-muted/40 rounded-md p-3 text-xs text-text-primary flex items-center gap-3">
                               <div className="w-4 h-4 border-2 border-accent-navy border-t-transparent rounded-full animate-spin shrink-0" />
                               <span className="font-mono text-[11px]">
                                 {statusText.includes("Forecaster") || statusText.includes("projection") ? statusText : "Preparing forecaster reasoning..."}
@@ -1663,11 +2164,11 @@ export default function Page() {
                             {/* Handoff Contract alert */}
                             <div className={`border rounded-md p-4 flex gap-3 ${
                               forecasterResponse.confidence === "Low"
-                                ? "border-flagged/40 bg-[#FEF3C7] text-[#B45309]"
-                                : "border-verified/40 bg-[#E8F5E9] text-verified"
+                                ? "border-flagged/40 bg-flagged-bg text-flagged"
+                                : "border-verified/40 bg-verified-bg text-verified"
                             }`}>
                               {forecasterResponse.confidence === "Low" ? (
-                                <AlertTriangle className="w-5 h-5 text-[#B45309] shrink-0 mt-0.5" />
+                                <AlertTriangle className="w-5 h-5 text-flagged shrink-0 mt-0.5" />
                               ) : (
                                 <CheckCircle2 className="w-5 h-5 text-verified shrink-0 mt-0.5" />
                               )}
@@ -1677,7 +2178,7 @@ export default function Page() {
                                     ? "Dual-Agent Pipeline Restriction Flagged:" 
                                     : "Dual-Agent Pipeline Check Completed:"}
                                 </strong>
-                                <p className="mt-1 text-slate-800">
+                                <p className="mt-1 text-text-primary">
                                   {forecasterResponse.risk_assessment}
                                 </p>
                               </div>
@@ -1689,7 +2190,7 @@ export default function Page() {
                                  <span className="text-[10px] font-bold text-text-primary uppercase tracking-wider">Growth Projections (3-Year)</span>
                                  <span className={`text-[9px] uppercase px-2 py-0.5 rounded font-semibold font-sans ${
                                    forecasterResponse.confidence === "Low"
-                                     ? "bg-[#D97706] text-white"
+                                     ? "bg-flagged text-white"
                                      : "bg-verified text-white"
                                  }`}>
                                    Confidence: {forecasterResponse.confidence}
@@ -1698,12 +2199,12 @@ export default function Page() {
                                <table className="w-full border-collapse text-left text-xs">
                                  <thead>
                                    {projectionsTable.getHeaderGroups().map(headerGroup => (
-                                     <tr key={headerGroup.id} className="bg-slate-50 border-b border-border">
+                                     <tr key={headerGroup.id} className="bg-bg border-b border-border">
                                        {headerGroup.headers.map(header => (
                                          <th 
                                            key={header.id}
                                            onClick={header.column.getToggleSortingHandler()}
-                                           className="p-3 text-[10px] uppercase font-bold text-text-secondary tracking-wider cursor-pointer hover:bg-slate-200/50 transition-all select-none"
+                                           className="p-3 text-[10px] uppercase font-bold text-text-secondary tracking-wider cursor-pointer hover:bg-border/30 transition-all select-none"
                                          >
                                            <div className="flex items-center gap-1">
                                              {flexRender(header.column.columnDef.header, header.getContext())}
@@ -1796,7 +2297,7 @@ export default function Page() {
                             handleSelectClaim(claim.id);
                             setSearchOpen(false);
                           }}
-                          className="flex items-center justify-between p-2.5 hover:bg-bg rounded-md text-left transition-colors cursor-pointer w-full text-xs data-[selected=true]:bg-slate-100/85 data-[selected=true]:text-text-primary font-sans select-none"
+                          className="flex items-center justify-between p-2.5 hover:bg-bg rounded-md text-left transition-colors cursor-pointer w-full text-xs data-[selected=true]:bg-muted data-[selected=true]:text-text-primary font-sans select-none"
                         >
                           <div className="flex flex-col gap-0.5">
                             <span className="font-semibold text-text-primary">{claim.metric}</span>
@@ -1813,6 +2314,78 @@ export default function Page() {
               </Command>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showLoadingOverlay && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-bg/85 backdrop-blur-md z-[100] flex flex-col items-center justify-center font-sans text-text-primary"
+          >
+            <div className="relative w-48 h-48 flex items-center justify-center">
+              {/* Outer spinning ring decoration */}
+              <div className="absolute inset-0 rounded-full border border-dashed border-accent-navy/30 animate-spin [animation-duration:15s]" />
+              
+              {/* Glow effect */}
+              <div className="absolute w-40 h-40 rounded-full bg-accent-navy/5 blur-xl animate-pulse" />
+              
+              {/* Circular Progress Ring */}
+              <svg className="w-40 h-40 transform -rotate-90">
+                <circle
+                  cx="80"
+                  cy="80"
+                  r="70"
+                  stroke="currentColor"
+                  className="text-border"
+                  strokeWidth="5"
+                  fill="transparent"
+                />
+                <motion.circle
+                  cx="80"
+                  cy="80"
+                  r="70"
+                  stroke="currentColor"
+                  className="text-accent-navy"
+                  strokeWidth="5"
+                  fill="transparent"
+                  strokeDasharray={2 * Math.PI * 70}
+                  initial={{ strokeDashoffset: 2 * Math.PI * 70 }}
+                  animate={{ strokeDashoffset: 2 * Math.PI * 70 * (1 - Math.floor(progress) / 100) }}
+                  transition={{ ease: "easeOut", duration: 0.15 }}
+                />
+              </svg>
+              
+              {/* Text inside circular progress */}
+              <div className="absolute flex flex-col items-center justify-center">
+                <span className="font-mono text-3xl font-bold tracking-tight text-text-primary">
+                  {Math.floor(progress)}%
+                </span>
+                <span className="text-[9px] text-text-secondary uppercase tracking-widest font-semibold mt-1">
+                  Verification
+                </span>
+              </div>
+            </div>
+
+            {/* Status indicator texts */}
+            <div className="text-center max-w-sm mt-8 space-y-2 px-6">
+              <motion.div
+                key={statusText}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.15 }}
+                className="font-mono text-xs font-semibold text-text-primary h-5 truncate"
+              >
+                {statusText}
+              </motion.div>
+              <div className="text-[10px] text-text-secondary font-sans leading-normal">
+                DecimalLens is running deterministic math checks on your document. Please wait.
+              </div>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
       </div>
@@ -1941,5 +2514,6 @@ export default function Page() {
         </div>
       )}
     </>
+    </ThemeProvider>
   );
 }

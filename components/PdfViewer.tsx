@@ -16,16 +16,15 @@ interface PdfViewerProps {
   url: string;
   currentPage: number;
   onPageChange?: (page: number) => void;
+  highlightText?: string;
 }
 
-export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerProps) {
+export default function PdfViewer({ url, currentPage, onPageChange, highlightText }: PdfViewerProps) {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(currentPage || 1);
   const [scale, setScale] = useState<number>(1.0);
 
   // Sync external currentPage prop changes via effect instead of during render.
-  // Calling setState directly in the render body is an anti-pattern that can
-  // trigger infinite re-renders in React Strict Mode.
   useEffect(() => {
     if (currentPage !== pageNumber) {
       setPageNumber(currentPage);
@@ -49,15 +48,57 @@ export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerP
     }
   };
 
+  // Custom text renderer for highlighting text on PDF pages
+  const textRenderer = (textItem: any) => {
+    if (!highlightText) return textItem.str;
+
+    const cleanText = textItem.str.replace(/\s+/g, ' ').trim().toLowerCase();
+    const cleanPattern = highlightText.replace(/\s+/g, ' ').trim().toLowerCase();
+
+    if (!cleanText || !cleanPattern) return textItem.str;
+
+    const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Case 1: Text item contains full pattern
+    if (cleanText.includes(cleanPattern)) {
+      const escaped = escapeRegExp(cleanPattern);
+      const regex = new RegExp(`(${escaped})`, 'gi');
+      const parts = textItem.str.split(regex);
+      return parts.map((part: string, index: number) => 
+        regex.test(part) ? (
+          <mark 
+            key={index} 
+            className="bg-amber-200 dark:bg-amber-500/40 text-text-primary px-0.5 rounded-sm font-semibold"
+          >
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      );
+    }
+
+    // Case 2: Pattern contains text item (word-chunk matching)
+    if (cleanPattern.includes(cleanText) && cleanText.length > 8) {
+      return (
+        <mark className="bg-amber-200 dark:bg-amber-500/40 text-text-primary px-0.5 rounded-sm font-semibold">
+          {textItem.str}
+        </mark>
+      );
+    }
+
+    return textItem.str;
+  };
+
   return (
-    <div className="flex flex-col items-center w-full h-full bg-zinc-100 relative">
+    <div className="flex flex-col items-center w-full h-full bg-bg relative">
       {/* Viewer toolbar */}
-      <div className="w-full h-10 border-b border-border bg-[#FAFAFA] flex items-center justify-between px-4 sticky top-0 z-10 shrink-0 select-none">
+      <div className="w-full h-10 border-b border-border bg-panel flex items-center justify-between px-4 sticky top-0 z-10 shrink-0 select-none">
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => changePage(-1)}
             disabled={pageNumber <= 1}
-            className="p-1 rounded hover:bg-slate-200/60 disabled:opacity-30 disabled:hover:bg-transparent text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent text-text-secondary hover:text-text-primary transition-all cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -67,7 +108,7 @@ export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerP
           <button
             onClick={() => changePage(1)}
             disabled={numPages === null || pageNumber >= numPages}
-            className="p-1 rounded hover:bg-slate-200/60 disabled:opacity-30 disabled:hover:bg-transparent text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            className="p-1 rounded hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent text-text-secondary hover:text-text-primary transition-all cursor-pointer"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -76,7 +117,7 @@ export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerP
         <div className="flex items-center gap-2">
           <button
             onClick={() => setScale((s) => Math.max(0.6, s - 0.1))}
-            className="p-1 rounded hover:bg-slate-200/60 text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            className="p-1 rounded hover:bg-muted text-text-secondary hover:text-text-primary transition-all cursor-pointer"
             title="Zoom Out"
           >
             <ZoomOut className="w-3.5 h-3.5" />
@@ -86,7 +127,7 @@ export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerP
           </span>
           <button
             onClick={() => setScale((s) => Math.min(2.0, s + 0.1))}
-            className="p-1 rounded hover:bg-slate-200/60 text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+            className="p-1 rounded hover:bg-muted text-text-secondary hover:text-text-primary transition-all cursor-pointer"
             title="Zoom In"
           >
             <ZoomIn className="w-3.5 h-3.5" />
@@ -95,7 +136,7 @@ export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerP
       </div>
 
       {/* PDF Container */}
-      <div className="flex-1 w-full overflow-auto flex justify-center p-4 bg-zinc-100 min-h-0">
+      <div className="flex-1 w-full overflow-auto flex justify-center p-4 bg-bg min-h-0">
         <div className="bg-panel border border-border shadow-md rounded-md overflow-hidden h-fit transition-transform duration-150 ease-out">
           <Document
             file={url}
@@ -113,10 +154,12 @@ export default function PdfViewer({ url, currentPage, onPageChange }: PdfViewerP
             }
           >
             <Page
+              key={`${pageNumber}_${highlightText || ""}`}
               pageNumber={pageNumber}
               scale={scale}
               renderAnnotationLayer={true}
               renderTextLayer={true}
+              customTextRenderer={textRenderer}
               loading={
                 <div className="flex items-center justify-center p-16 min-h-[300px]">
                   <Loader2 className="w-5 h-5 text-accent-navy animate-spin" />
