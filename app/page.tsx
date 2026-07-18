@@ -108,6 +108,59 @@ const StreamingBox = ({ title, text }: { title: string; text: string }) => {
   );
 };
 
+const TableSkeleton = () => {
+  return (
+    <div className="border border-border rounded-md overflow-hidden bg-panel shadow-sm animate-pulse">
+      <div className="bg-bg border-b border-border p-3 flex gap-4">
+        <div className="h-3.5 w-10 bg-slate-200 rounded" />
+        <div className="h-3.5 w-32 bg-slate-200 rounded" />
+        <div className="h-3.5 w-20 bg-slate-200 rounded" />
+        <div className="h-3.5 w-16 bg-slate-200 rounded" />
+      </div>
+      <div className="p-3 space-y-4">
+        {[1, 2, 3, 4].map(idx => (
+          <div key={idx} className="flex gap-4 items-center">
+            <div className="h-2.5 w-8 bg-slate-200 rounded" />
+            <div className="h-3 w-40 bg-slate-200 rounded" />
+            <div className="h-3 w-24 bg-slate-200 rounded" />
+            <div className="h-3.5 w-12 bg-slate-100 rounded" />
+            <div className="h-2.5 w-10 bg-slate-200 rounded ml-auto" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ForecastSkeleton = () => {
+  return (
+    <div className="space-y-4 animate-pulse mt-2">
+      <div className="border border-slate-200 rounded-md p-4 bg-slate-50 space-y-2">
+        <div className="h-3.5 w-32 bg-slate-200 rounded" />
+        <div className="h-3 w-full bg-slate-200 rounded" />
+        <div className="h-3 w-5/6 bg-slate-200 rounded" />
+      </div>
+      
+      <div className="border border-border rounded-md overflow-hidden bg-panel shadow-sm">
+        <div className="bg-bg border-b border-border p-3 flex justify-between">
+          <div className="h-3.5 w-28 bg-slate-200 rounded" />
+          <div className="h-3.5 w-16 bg-slate-200 rounded" />
+        </div>
+        <div className="p-3 space-y-4">
+          {[1, 2, 3].map(idx => (
+            <div key={idx} className="flex gap-4">
+              <div className="h-3 w-20 bg-slate-200 rounded" />
+              <div className="h-3 w-24 bg-slate-200 rounded" />
+              <div className="h-3 w-24 bg-slate-200 rounded" />
+              <div className="h-3 w-16 bg-slate-200 rounded ml-auto" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Page() {
   const [activeAgent, setActiveAgent] = useState<"auditor" | "forecaster">("auditor");
   const [fileName, setFileName] = useState<string | null>(null);
@@ -387,6 +440,58 @@ export default function Page() {
       setIsAnalyzing(false);
       setStatusText("");
     }
+  };
+
+  const exportToCsv = () => {
+    if (extractedClaims.length === 0) return;
+    const headers = ["Claim ID", "Metric Name", "Reported Value", "Recalculated Value", "Formula Check", "Expression", "Page Number", "Status", "Verification Reason"];
+    const rows = extractedClaims.map(claim => [
+      claim.id.toUpperCase(),
+      claim.metric,
+      claim.reported,
+      claim.recalculated,
+      claim.formula,
+      claim.expression,
+      `Page ${claim.page}`,
+      claim.verified ? "Verified (OK)" : "Flagged (Mismatch)",
+      claim.reason || ""
+    ]);
+    if (forecasterResponse?.projections) {
+      rows.push([]);
+      rows.push(["--- Growth Projections (3-Year Forecast) ---"]);
+      rows.push(["Fiscal Year", "Projected Revenue", "Projected Operating Income", "Risk Weight"]);
+      forecasterResponse.projections.forEach(p => {
+        rows.push([
+          p.year,
+          p.projected_revenue,
+          p.projected_operating_income,
+          p.risk_weight
+        ]);
+      });
+      rows.push([]);
+      rows.push(["Risk Assessment Notes:", forecasterResponse.risk_assessment]);
+    }
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(val => {
+        if (val === undefined || val === null) return '""';
+        const stringVal = String(val);
+        const escaped = stringVal.replace(/"/g, '""');
+        return `"${escaped}"`;
+      }).join(","))
+      .join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `decimallens_audit_report_${fileName?.split('.')[0] || 'report'}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   const handleStartEdit = () => {
@@ -742,7 +847,8 @@ export default function Page() {
   };
 
   return (
-    <div className="flex flex-col flex-1 h-screen overflow-hidden bg-bg">
+    <>
+      <div className="flex flex-col flex-1 h-screen overflow-hidden bg-bg print:hidden">
       <input
         type="file"
         ref={fileInputRef}
@@ -783,6 +889,28 @@ export default function Page() {
                 <FileText className="w-3.5 h-3.5 text-accent-navy" />
                 <span className="font-mono text-[11px]">{fileName}</span>
               </div>
+              
+              {/* Export Findings Buttons */}
+              {extractedClaims.length > 0 && (
+                <div className="flex items-center gap-1 bg-[#F1F5F9] border border-border p-1 rounded-md">
+                  <button
+                    onClick={exportToCsv}
+                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-slate-200/50 px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                    title="Export verified claims and forecast projections to a CSV file"
+                  >
+                    CSV
+                  </button>
+                  <span className="w-px h-3.5 bg-border" />
+                  <button
+                    onClick={handlePrint}
+                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-slate-200/50 px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                    title="Print report card or save as PDF"
+                  >
+                    PDF / Print
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={() => {
                   setFileName(null);
@@ -1042,11 +1170,19 @@ export default function Page() {
           {/* Insights Display Container */}
           <div className="flex-1 p-6 overflow-y-auto">
             {errorMsg && (
-              <div className="mb-4 border border-red-200 bg-red-50 text-red-700 p-4 rounded-md text-xs flex gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="font-bold">Error:</strong> {errorMsg}
+              <div className="mb-4 border border-red-200 bg-red-50 text-red-700 p-4 rounded-md text-xs flex justify-between items-start">
+                <div className="flex gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold">Error:</strong> {errorMsg}
+                  </div>
                 </div>
+                <button
+                  onClick={() => setErrorMsg("")}
+                  className="text-red-700 hover:text-red-950 font-bold ml-4 cursor-pointer text-[10px] uppercase tracking-wider hover:underline"
+                >
+                  Dismiss
+                </button>
               </div>
             )}
 
@@ -1093,6 +1229,10 @@ export default function Page() {
                         <div className="w-4 h-4 border-2 border-accent-navy border-t-transparent rounded-full animate-spin shrink-0" />
                         <span className="font-mono text-[11px]">{statusText}</span>
                       </div>
+                    )}
+
+                    {isAnalyzing && extractedClaims.length === 0 && (
+                      <TableSkeleton />
                     )}
 
                     {/* Live streaming window */}
@@ -1435,12 +1575,15 @@ export default function Page() {
                       <>
                         {/* Status alert for Forecaster */}
                         {isAnalyzing && !forecasterResponse && (
-                          <div className="border border-border bg-[#F8FAFC] rounded-md p-3 text-xs text-text-primary flex items-center gap-3">
-                            <div className="w-4 h-4 border-2 border-accent-navy border-t-transparent rounded-full animate-spin shrink-0" />
-                            <span className="font-mono text-[11px]">
-                              {statusText.includes("Forecaster") || statusText.includes("projection") ? statusText : "Preparing forecaster reasoning..."}
-                            </span>
-                          </div>
+                          <>
+                            <div className="border border-border bg-[#F8FAFC] rounded-md p-3 text-xs text-text-primary flex items-center gap-3">
+                              <div className="w-4 h-4 border-2 border-accent-navy border-t-transparent rounded-full animate-spin shrink-0" />
+                              <span className="font-mono text-[11px]">
+                                {statusText.includes("Forecaster") || statusText.includes("projection") ? statusText : "Preparing forecaster reasoning..."}
+                              </span>
+                            </div>
+                            <ForecastSkeleton />
+                          </>
                         )}
 
                         {/* Live streaming window for Forecaster */}
@@ -1611,6 +1754,131 @@ export default function Page() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
+
+      {/* Printable Report Layout */}
+      {fileName && (
+        <div className="hidden print:block p-10 font-sans max-w-4xl mx-auto text-slate-900 bg-white">
+          <div className="border-b-2 border-slate-950 pb-4 mb-6">
+            <div className="flex justify-between items-end">
+              <div>
+                <h1 className="text-xl font-bold tracking-tight text-slate-950 uppercase">DecimalLens Audit Summary</h1>
+                <p className="text-xs text-slate-500 mt-1 font-sans">Enterprise Financial Intelligence & Calculation Verification</p>
+              </div>
+              <div className="text-right">
+                <div className="text-xs font-mono font-bold text-slate-700">SOURCE FILING: {fileName}</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Report Date: {new Date().toLocaleDateString()}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Verification Status Summary Cards */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="border border-slate-200 rounded p-3">
+              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-semibold block">Total Claims Extracted</span>
+              <span className="text-lg font-mono font-bold text-slate-800 mt-1 block">{extractedClaims.length}</span>
+            </div>
+            <div className="border border-slate-200 rounded p-3 bg-emerald-50/20">
+              <span className="text-[9px] uppercase tracking-wider text-emerald-700 font-semibold block">Verified Claims</span>
+              <span className="text-lg font-mono font-bold text-emerald-700 mt-1 block">
+                {extractedClaims.filter(c => c.verified).length}
+              </span>
+            </div>
+            <div className="border border-slate-200 rounded p-3 bg-amber-50/20">
+              <span className="text-[9px] uppercase tracking-wider text-amber-700 font-semibold block">Flagged Mismatches</span>
+              <span className="text-lg font-mono font-bold text-amber-700 mt-1 block">
+                {extractedClaims.filter(c => !c.verified).length}
+              </span>
+            </div>
+          </div>
+
+          {/* Claims Table */}
+          <div className="mb-8">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-3 font-sans">Extracted & Verified Claims Grid</h3>
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-900 bg-slate-50">
+                  <th className="p-2 font-bold text-[10px] uppercase text-slate-600">ID</th>
+                  <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Metric Name</th>
+                  <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Reported</th>
+                  <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Recalculated</th>
+                  <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Status</th>
+                  <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Formula Check / Notes</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {extractedClaims.map(claim => (
+                  <tr key={claim.id} className="align-top">
+                    <td className="p-2 font-mono text-[10px] text-slate-500">{claim.id.toUpperCase().replace("CLAIM-", "C")}</td>
+                    <td className="p-2 font-semibold text-slate-800">{claim.metric}</td>
+                    <td className="p-2 font-mono text-slate-700">{claim.reported}</td>
+                    <td className="p-2 font-mono text-slate-700">{claim.recalculated}</td>
+                    <td className="p-2">
+                      <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                        claim.verified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                      }`}>
+                        {claim.verified ? "OK" : "FLAGGED"}
+                      </span>
+                    </td>
+                    <td className="p-2 text-[10px] text-slate-600 leading-normal">
+                      <div className="font-mono bg-slate-50 px-1 py-0.5 rounded border border-slate-100 mb-1">{claim.formula}</div>
+                      {!claim.verified && claim.reason && (
+                        <div className="text-red-700 font-medium text-[9px] mt-0.5">{claim.reason}</div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Forecaster Projections */}
+          {forecasterResponse && (
+            <div className="mb-6 page-break-inside-avoid">
+              <div className="border border-slate-200 rounded-md p-4 bg-slate-50/50 mb-6">
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide font-sans">Forecaster Risk Assessment Notes</h4>
+                <p className="text-xs text-slate-700 mt-2 leading-relaxed">
+                  {forecasterResponse.risk_assessment}
+                </p>
+              </div>
+
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 mb-3 font-sans">3-Year Growth Projections</h3>
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-900 bg-slate-50">
+                    <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Fiscal Year</th>
+                    <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Projected Revenue</th>
+                    <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Projected Operating Income</th>
+                    <th className="p-2 font-bold text-[10px] uppercase text-slate-600">Risk Weight</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {forecasterResponse.projections.map((p, idx) => (
+                    <tr key={idx}>
+                      <td className="p-2 font-medium">{p.year}</td>
+                      <td className="p-2 font-mono font-semibold">{p.projected_revenue}</td>
+                      <td className="p-2 font-mono font-semibold text-slate-700">{p.projected_operating_income}</td>
+                      <td className="p-2">
+                        <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          p.risk_weight.toLowerCase().includes("high") ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"
+                        }`}>
+                          {p.risk_weight}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Footer signature */}
+          <div className="border-t border-slate-200 pt-4 mt-8 flex justify-between items-center text-[9px] text-slate-400">
+            <span>DecimalLens Financial Intel - Confidential Report</span>
+            <span>Generated by Devanshu Yadav</span>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
