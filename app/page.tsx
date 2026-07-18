@@ -774,6 +774,7 @@ export default function Page() {
     } finally {
       setIsAnalyzing(false);
       setStatusText("");
+      setTargetProgress(100);
     }
   };
 
@@ -1144,6 +1145,7 @@ export default function Page() {
     } finally {
       setIsAnalyzing(false);
       setStatusText("");
+      setTargetProgress(100);
     }
   };
 
