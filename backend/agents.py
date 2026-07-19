@@ -27,7 +27,36 @@ def get_groq_client():
     )
 
 # Model configuration
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+FALLBACK_MODEL = "llama-3.1-8b-instant"
+
+
+async def create_groq_completion_with_fallback(client, messages, response_format={"type": "json_object"}, timeout=30.0):
+    """
+    Attempts completion with DEFAULT_MODEL first. If rate limited or quota exceeded,
+    automatically falls back to FALLBACK_MODEL (llama-3.1-8b-instant) which has much
+    higher daily token limits on Groq free tier.
+    """
+    try:
+        response = await client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=messages,
+            response_format=response_format,
+            stream=True,
+            timeout=timeout
+        )
+        return response
+    except Exception as primary_err:
+        print(f"Primary Groq model {DEFAULT_MODEL} failed ({primary_err}). Retrying with fallback model {FALLBACK_MODEL}...")
+        response = await client.chat.completions.create(
+            model=FALLBACK_MODEL,
+            messages=messages,
+            response_format=response_format,
+            stream=True,
+            timeout=timeout
+        )
+        return response
+
 
 # Auditor Agent System Prompt
 AUDITOR_SYSTEM_PROMPT = """You are the Auditor Agent, a key component of Decimal Lens.

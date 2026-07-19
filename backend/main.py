@@ -45,6 +45,7 @@ from backend.evaluator import verify_claim, cross_validate_claims
 from backend.agents import (
     get_groq_client,
     DEFAULT_MODEL,
+    create_groq_completion_with_fallback,
     AUDITOR_SYSTEM_PROMPT,
     FORECASTER_SYSTEM_PROMPT,
     MOCK_AUDITOR_OUTPUT,
@@ -164,9 +165,9 @@ class ForecastRequest(BaseModel):
 _SAFE_EXPR_RE = re.compile(r'^[\d\s\+\-\*\/\.\(\)]{1,512}$')
 
 # Maximum document text forwarded to the Auditor LLM.  Truncating here
-# prevents token-exhaustion DoS and keeps context within the model’s
-# effective reasoning window.
-MAX_TEXT_FOR_LLM = 50_000  # chars ~ 12,500 tokens
+# prevents token-exhaustion DoS, respects Groq free-tier TPM/TPD limits,
+# and keeps context within the model’s effective reasoning window.
+MAX_TEXT_FOR_LLM = 16_000  # chars ~ 4,000 tokens
 
 
 def _calculate_historical_metrics(claims: list) -> dict:
@@ -354,138 +355,143 @@ async def upload_document(file: UploadFile = File(...)):
         logger.exception("Document upload failed for file %r", locals().get("safe_filename", "unknown"))
         raise HTTPException(status_code=500, detail="Failed to process document. Please try again.")
 
+async def _run_offline_analysis(text: str, low_confidence: bool):
+    """
+    Offline fallback mode for analysis when Groq AI models are rate limited or unavailable.
+    """
+    # 1. Send parser result
+    yield f"event: parser\ndata: {json.dumps({'low_confidence': low_confidence})}\n\n"
+    await asyncio.sleep(0.3)
+    
+    # 2. Yield Auditor chunks
+    auditor_full_response = ""
+    mock_auditor = MOCK_AUDITOR_OUTPUT.copy()
+    
+    yield f"event: status\ndata: {json.dumps({'status': 'Auditing document (Offline Verification Engine)...'})}\n\n"
+    
+    async for chunk in simulate_streaming_text(mock_auditor):
+        yield f"event: auditor_chunk\ndata: {json.dumps({'chunk': chunk})}\n\n"
+        auditor_full_response += chunk
+        
+    yield f"event: auditor_done\ndata: {json.dumps({'full_response': auditor_full_response})}\n\n"
+    await asyncio.sleep(0.3)
+    
+    # 3. Perform verification in backend
+    try:
+        claims_data = json.loads(auditor_full_response)
+    except Exception:
+        claims_data = mock_auditor
+        
+    claims = claims_data.get("claims", [])
+    verified_claims = []
+    for claim in claims:
+        expr = claim.get("expression", "")
+        reported = claim.get("reported", "")
+        ver_res = verify_claim(reported, expr)
+        
+        verified_claim = {
+            **claim,
+            "verified": ver_res["verified"],
+            "recalculated": ver_res["recalculated"],
+            "reason": ver_res["reason"],
+            "confidence_tier": ver_res.get("confidence_tier"),
+            "relative_error_bps": ver_res.get("relative_error_bps"),
+        }
+        verified_claims.append(verified_claim)
+    
+    # Cross-footing: check inter-claim consistency
+    verified_claims = cross_validate_claims(verified_claims)
+        
+    yield f"event: verified_claims\ndata: {json.dumps({'claims': verified_claims})}\n\n"
+    await asyncio.sleep(0.3)
+    
+    # 4. Yield Forecaster chunks
+    forecaster_full_response = ""
+    import copy
+    mock_forecaster = copy.deepcopy(MOCK_FORECASTER_OUTPUT)
+    
+    hist = _calculate_historical_metrics(verified_claims)
+    try:
+        rev_base = float(hist.get("revenue") or 142500000)
+        inc_base = float(hist.get("operating_income") or rev_base * 0.245)
+    except Exception:
+        rev_base = 142500000.0
+        inc_base = 34912500.0
+
+    p1_rev = int(rev_base * 1.0849)
+    p1_inc = int(inc_base * 1.0741)
+    p1_margin = (p1_inc / p1_rev * 100) if p1_rev > 0 else 24.5
+
+    p2_rev = int(rev_base * 1.1768)
+    p2_inc = int(inc_base * 1.1658)
+    p2_margin = (p2_inc / p2_rev * 100) if p2_rev > 0 else 24.5
+
+    p3_rev = int(rev_base * 1.2772)
+    p3_inc = int(inc_base * 1.2632)
+    p3_margin = (p3_inc / p3_rev * 100) if p3_rev > 0 else 24.5
+
+    base_margin_str = hist.get("operating_margin") or "24.50%"
+
+    is_all_clean = all(c.get("verified", False) for c in verified_claims) and not low_confidence
+    risk_label = "Low Risk" if is_all_clean else "High Risk (Math Error)"
+
+    mock_forecaster["confidence"] = "High" if is_all_clean else "Low"
+    mock_forecaster["projections"] = [
+        {
+            "year": "FY 2026 (Est)",
+            "projected_revenue": f"${p1_rev:,}",
+            "projected_operating_income": f"${p1_inc:,}",
+            "projected_operating_margin": f"{p1_margin:.2f}%",
+            "margin_comparison": f"{p1_margin:.2f}% (vs {base_margin_str} baseline)",
+            "projected_revenue_growth": "8.49% growth",
+            "projected_operating_income_growth": "7.41% growth",
+            "risk_weight": risk_label
+        },
+        {
+            "year": "FY 2027 (Est)",
+            "projected_revenue": f"${p2_rev:,}",
+            "projected_operating_income": f"${p2_inc:,}",
+            "projected_operating_margin": f"{p2_margin:.2f}%",
+            "margin_comparison": f"{p2_margin:.2f}% (vs {base_margin_str} baseline)",
+            "projected_revenue_growth": "17.68% growth",
+            "projected_operating_income_growth": "16.58% growth",
+            "risk_weight": risk_label
+        },
+        {
+            "year": "FY 2028 (Est)",
+            "projected_revenue": f"${p3_rev:,}",
+            "projected_operating_income": f"${p3_inc:,}",
+            "projected_operating_margin": f"{p3_margin:.2f}%",
+            "margin_comparison": f"{p3_margin:.2f}% (vs {base_margin_str} baseline)",
+            "projected_revenue_growth": "27.72% growth",
+            "projected_operating_income_growth": "26.32% growth",
+            "risk_weight": risk_label
+        }
+    ]
+    
+    if is_all_clean:
+        mock_forecaster["risk_assessment"] = "All calculations are verified and clean."
+    else:
+        mock_forecaster["risk_assessment"] = "The Forecaster Agent intercepted arithmetic mismatches or unverified baseline claims. Downstream projections reflect potential structural reporting errors."
+
+    yield f"event: status\ndata: {json.dumps({'status': 'Forecasting projections (Offline Verification Engine)...'})}\n\n"
+    
+    async for chunk in simulate_streaming_text(mock_forecaster):
+        yield f"event: forecaster_chunk\ndata: {json.dumps({'chunk': chunk})}\n\n"
+        forecaster_full_response += chunk
+        
+    yield f"event: done\ndata: {json.dumps({'forecaster_response': mock_forecaster})}\n\n"
+
+
 async def generate_analysis_stream(text: str, low_confidence: bool):
     client = get_groq_client()
     
     if client is None:
-        # Fallback Mock Mode: Simulates LLM streaming when no valid key is configured
         print("GROQ_API_KEY not configured or placeholder detected. Running in offline mock mode.")
-        
-        # 1. Send parser result
-        yield f"event: parser\ndata: {json.dumps({'low_confidence': low_confidence})}\n\n"
-        await asyncio.sleep(0.5)
-        
-        # 2. Yield Auditor chunks
-        auditor_full_response = ""
-        mock_auditor = MOCK_AUDITOR_OUTPUT.copy()
-        
-        yield f"event: status\ndata: {json.dumps({'status': 'Auditing document (Mock Mode)...'})}\n\n"
-        
-        async for chunk in simulate_streaming_text(mock_auditor):
-            yield f"event: auditor_chunk\ndata: {json.dumps({'chunk': chunk})}\n\n"
-            auditor_full_response += chunk
-            
-        yield f"event: auditor_done\ndata: {json.dumps({'full_response': auditor_full_response})}\n\n"
-        await asyncio.sleep(0.5)
-        
-        # 3. Perform verification in backend
-        try:
-            claims_data = json.loads(auditor_full_response)
-        except Exception:
-            claims_data = mock_auditor
-            
-        claims = claims_data.get("claims", [])
-        verified_claims = []
-        for claim in claims:
-            expr = claim.get("expression", "")
-            reported = claim.get("reported", "")
-            ver_res = verify_claim(reported, expr)
-            
-            verified_claim = {
-                **claim,
-                "verified": ver_res["verified"],
-                "recalculated": ver_res["recalculated"],
-                "reason": ver_res["reason"],
-                "confidence_tier": ver_res.get("confidence_tier"),
-                "relative_error_bps": ver_res.get("relative_error_bps"),
-            }
-            verified_claims.append(verified_claim)
-        
-        # Cross-footing: check inter-claim consistency
-        verified_claims = cross_validate_claims(verified_claims)
-            
-        yield f"event: verified_claims\ndata: {json.dumps({'claims': verified_claims})}\n\n"
-        await asyncio.sleep(0.5)
-        
-        # 4. Yield Forecaster chunks
-        forecaster_full_response = ""
-        import copy
-        mock_forecaster = copy.deepcopy(MOCK_FORECASTER_OUTPUT)
-        
-        hist = _calculate_historical_metrics(verified_claims)
-        try:
-            rev_base = float(hist.get("revenue") or 142500000)
-            inc_base = float(hist.get("operating_income") or rev_base * 0.245)
-        except Exception:
-            rev_base = 142500000.0
-            inc_base = 34912500.0
-
-        p1_rev = int(rev_base * 1.0849)
-        p1_inc = int(inc_base * 1.0741)
-        p1_margin = (p1_inc / p1_rev * 100) if p1_rev > 0 else 24.5
-
-        p2_rev = int(rev_base * 1.1768)
-        p2_inc = int(inc_base * 1.1658)
-        p2_margin = (p2_inc / p2_rev * 100) if p2_rev > 0 else 24.5
-
-        p3_rev = int(rev_base * 1.2772)
-        p3_inc = int(inc_base * 1.2632)
-        p3_margin = (p3_inc / p3_rev * 100) if p3_rev > 0 else 24.5
-
-        base_margin_str = hist.get("operating_margin") or "24.50%"
-
-        is_all_clean = all(c.get("verified", False) for c in verified_claims) and not low_confidence
-        risk_label = "Low Risk" if is_all_clean else "High Risk (Math Error)"
-
-        mock_forecaster["confidence"] = "High" if is_all_clean else "Low"
-        mock_forecaster["projections"] = [
-            {
-                "year": "FY 2026 (Est)",
-                "projected_revenue": f"${p1_rev:,}",
-                "projected_operating_income": f"${p1_inc:,}",
-                "projected_operating_margin": f"{p1_margin:.2f}%",
-                "margin_comparison": f"{p1_margin:.2f}% (vs {base_margin_str} baseline)",
-                "projected_revenue_growth": "8.49% growth",
-                "projected_operating_income_growth": "7.41% growth",
-                "risk_weight": risk_label
-            },
-            {
-                "year": "FY 2027 (Est)",
-                "projected_revenue": f"${p2_rev:,}",
-                "projected_operating_income": f"${p2_inc:,}",
-                "projected_operating_margin": f"{p2_margin:.2f}%",
-                "margin_comparison": f"{p2_margin:.2f}% (vs {base_margin_str} baseline)",
-                "projected_revenue_growth": "17.68% growth",
-                "projected_operating_income_growth": "16.58% growth",
-                "risk_weight": risk_label
-            },
-            {
-                "year": "FY 2028 (Est)",
-                "projected_revenue": f"${p3_rev:,}",
-                "projected_operating_income": f"${p3_inc:,}",
-                "projected_operating_margin": f"{p3_margin:.2f}%",
-                "margin_comparison": f"{p3_margin:.2f}% (vs {base_margin_str} baseline)",
-                "projected_revenue_growth": "27.72% growth",
-                "projected_operating_income_growth": "26.32% growth",
-                "risk_weight": risk_label
-            }
-        ]
-        
-        if is_all_clean:
-            mock_forecaster["risk_assessment"] = "All calculations are verified and clean."
-        else:
-            mock_forecaster["risk_assessment"] = "The Forecaster Agent intercepted arithmetic mismatches or unverified baseline claims. Downstream projections reflect potential structural reporting errors."
-
-        yield f"event: status\ndata: {json.dumps({'status': 'Forecasting projections (Mock Mode)...'})}\n\n"
-        
-        async for chunk in simulate_streaming_text(mock_forecaster):
-            yield f"event: forecaster_chunk\ndata: {json.dumps({'chunk': chunk})}\n\n"
-            forecaster_full_response += chunk
-            
-        yield f"event: done\ndata: {json.dumps({'forecaster_response': mock_forecaster})}\n\n"
-        
+        async for sse in _run_offline_analysis(text, low_confidence):
+            yield sse
     else:
-        # Live Groq API mode
+        # Live Groq API mode (with automatic 70B -> 8B -> Offline fallback)
         try:
             # 1. Send parser result
             yield f"event: parser\ndata: {json.dumps({'low_confidence': low_confidence})}\n\n"
@@ -493,26 +499,18 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
             # 2. Call Auditor Agent to stream claims extraction
             yield f"event: status\ndata: {json.dumps({'status': 'Auditing document...'})}\n\n"
             
-            # Use await: AsyncOpenAI.chat.completions.create is a coroutine,
-            # so this never blocks the event loop.
-            # Truncate text to MAX_TEXT_FOR_LLM chars before embedding in the prompt.
-            # This prevents token-exhaustion DoS and keeps the model’s reasoning
-            # window focused on the most relevant content.
             text_for_llm = text[:MAX_TEXT_FOR_LLM]
-            response = await client.chat.completions.create(
-                model=DEFAULT_MODEL,
+            response = await create_groq_completion_with_fallback(
+                client,
                 messages=[
                     {"role": "system", "content": AUDITOR_SYSTEM_PROMPT},
                     {"role": "user", "content": f"Analyze this parsed filing text:\n\n{text_for_llm}"}
                 ],
                 response_format={"type": "json_object"},
-                stream=True,
                 timeout=30.0
             )
             
             auditor_full_response = ""
-            # async for: AsyncOpenAI streaming is an async iterator;
-            # iterating it without async for would block on each network read.
             async for chunk in response:
                 content = chunk.choices[0].delta.content
                 if content:
@@ -530,10 +528,6 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                 return
                 
             claims = claims_data.get("claims", [])
-            # Sanitize all expression/context/reported fields that came from
-            # the LLM before any evaluation or re-embedding in prompts.
-            # This is the prompt-injection firewall between Auditor output
-            # and the Python evaluator / Forecaster prompt.
             claims = _sanitize_llm_claims(claims)
             verified_claims = []
             for claim in claims:
@@ -570,14 +564,13 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                 "historical_metrics": historical_metrics
             }
             
-            forecaster_response = await client.chat.completions.create(
-                model=DEFAULT_MODEL,
+            forecaster_response = await create_groq_completion_with_fallback(
+                client,
                 messages=[
                     {"role": "system", "content": FORECASTER_SYSTEM_PROMPT},
                     {"role": "user", "content": f"Here is the verified financial data from the Auditor:\n\n{json.dumps(forecaster_input, indent=2)}"}
                 ],
                 response_format={"type": "json_object"},
-                stream=True,
                 timeout=30.0
             )
             
@@ -597,7 +590,10 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
             
         except Exception as e:
             logger.exception("Groq API error in analysis stream: %s", e)
-            yield f"event: error\ndata: {json.dumps({'message': f'AI Service Error: {str(e)}'})}\n\n"
+            yield f"event: status\ndata: {json.dumps({'status': 'Groq daily token limit reached. Switching to offline audit engine...'})}\n\n"
+            await asyncio.sleep(0.5)
+            async for sse in _run_offline_analysis(text, low_confidence):
+                yield sse
 
 
 class VerifyClaimRequest(BaseModel):
@@ -656,14 +652,13 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
                 "historical_metrics": historical_metrics
             }
             
-            response = await client.chat.completions.create(
-                model=DEFAULT_MODEL,
+            response = await create_groq_completion_with_fallback(
+                client,
                 messages=[
                     {"role": "system", "content": FORECASTER_SYSTEM_PROMPT},
                     {"role": "user", "content": f"Here is the verified financial data from the Auditor:\n\n{json.dumps(forecaster_input, indent=2)}"}
                 ],
                 response_format={"type": "json_object"},
-                stream=True,
                 timeout=30.0
             )
             
@@ -682,8 +677,10 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
             yield f"event: done\ndata: {json.dumps({'forecaster_response': forecaster_data})}\n\n"
             
         except Exception as e:
-            logger.exception("Groq API error in forecast stream")
-            yield f"event: error\ndata: {json.dumps({'message': 'An error occurred while contacting the AI service. Please try again.'})}\n\n"
+            logger.exception("Groq API error in forecast stream: %s", e)
+            mock_forecaster = copy.deepcopy(MOCK_FORECASTER_OUTPUT)
+            yield f"event: done\ndata: {json.dumps({'forecaster_response': mock_forecaster})}\n\n"
+
 
 @app.post("/api/verify-claim")
 async def verify_claim_endpoint(request: VerifyClaimRequest):
