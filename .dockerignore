@@ -1,11 +1,40 @@
+# Dependencies & Build artifacts
 node_modules
 .next
+/out
+/build
 .git
 .gitignore
 .dockerignore
+.vscode
+
+# AI Agent Instructions, Rules & Agent Systems
+AGENTS.md
+AGENT.md
+CLAUDE.md
+COPILOT.md
+GEMINI.md
+CURSOR.md
+.agents
+.gemini
+.claude
+.cursor
+.windsurf
+.system_generated
+.brain
+skills-lock.json
+
+# Environment variables & Secrets
+.env
+.env.local
+.env.*
+
+# Testing & Caches
+.pytest_cache
+*.log
+
+# Python virtual environment & runtime artifacts
 backend/venv
 backend/__pycache__
 backend/uploads
-.agents
-.vscode
-*.log
+uploads
