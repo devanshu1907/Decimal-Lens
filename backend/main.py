@@ -20,9 +20,18 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s – %(message)s",
 )
 
-# Setup UPLOAD_DIR
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Setup UPLOAD_DIR safely for serverless environments (Vercel read-only filesystem)
+import tempfile
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+if IS_VERCEL:
+    UPLOAD_DIR = os.path.join(tempfile.gettempdir(), "decimallens_uploads")
+else:
+    UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except Exception:
+    UPLOAD_DIR = tempfile.gettempdir()
 
 # Load local environment variables from root .env.local
 dotenv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env.local")
@@ -579,8 +588,8 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
             yield f"event: done\ndata: {json.dumps({'forecaster_response': forecaster_data})}\n\n"
             
         except Exception as e:
-            logger.exception("Groq API error in analysis stream")
-            yield f"event: error\ndata: {json.dumps({'message': 'An error occurred while contacting the AI service. Please try again.'})}\n\n"
+            logger.exception("Groq API error in analysis stream: %s", e)
+            yield f"event: error\ndata: {json.dumps({'message': f'AI Service Error: {str(e)}'})}\n\n"
 
 
 class VerifyClaimRequest(BaseModel):

@@ -4,20 +4,19 @@ import asyncio
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
-# Ensure environment variables from .env.local are loaded
+# Ensure environment variables from .env.local are loaded if present locally,
+# without overwriting environment variables set by Vercel hosting platform.
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env.local")
 if os.path.exists(_env_path):
-    load_dotenv(_env_path, override=True)
-else:
-    load_dotenv(override=True)
+    load_dotenv(_env_path, override=False)
 
 # Initialize client using Groq compatible base URL
 def get_groq_client():
-    key = os.environ.get("GROQ_API_KEY")
+    key = os.environ.get("GROQ_API_KEY", "")
     if not key:
         return None
-    # Strip quotes if any
-    key = key.strip("'\"")
+    # Strip quotes and any surrounding whitespace
+    key = key.strip().strip("'\"")
     if not key.startswith("gsk_"):
         return None
     # AsyncOpenAI so every .create() call can be properly awaited

@@ -1307,7 +1307,7 @@ export default function Page() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Analysis request failed: ${response.statusText}`);
+        throw new Error(errorData.detail || `Analysis request failed (${response.status} ${response.statusText || 'Server Error'})`);
       }
 
       if (!response.body) {
