@@ -48,7 +48,7 @@ def test_check_malformed_text_tables():
     # Malformed table (row 1 has 3 columns, row 2 has 4 columns, row 3 has 2 columns)
     malformed_text = """
     Financial Table:
-    Item Name    US Segment    Intl Segment    Total
+    Item Name    Domestic Segment    Intl Segment    Total
     Revenue      45            97              142
     Gross Profit 62            80
     Operating    34            15              12    11
@@ -68,6 +68,21 @@ def test_parse_csv():
     assert result_malformed["low_confidence"] is True
     print("[OK] test_parse_csv passed")
 
+def test_calculate_historical_metrics():
+    from backend.main import _calculate_historical_metrics
+    claims = [
+        {"metric": "Total Revenue (Q4 2025)", "value": 142500000},
+        {"metric": "Gross Profit", "value": 62100000},
+        {"metric": "Operating Income", "value": 34912500}
+    ]
+    res = _calculate_historical_metrics(claims)
+    assert res["revenue"] == "142500000"
+    assert res["operating_income"] == "34912500"
+    assert res["operating_margin"] == "24.50%"
+    assert res["gross_profit"] == "62100000"
+    assert res["gross_margin"] == "43.58%"
+    print("[OK] test_calculate_historical_metrics passed")
+
 if __name__ == "__main__":
     print("Running backend tests...")
     test_clean_numeric_value()
@@ -75,4 +90,5 @@ if __name__ == "__main__":
     test_verify_claim()
     test_check_malformed_text_tables()
     test_parse_csv()
+    test_calculate_historical_metrics()
     print("All backend tests passed successfully!")

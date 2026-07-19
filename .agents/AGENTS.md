@@ -1,4 +1,4 @@
-# Decimallens Agent Guidelines
+# Decimal Lens Agent Guidelines
 
 ## 1. Project Scope & Architecture (LOCKED)
 - **Single-Document Extraction + Verification Pipeline**: This is NOT a retrieval-augmented generation (RAG) system. Do not build or reference hybrid search, embeddings, or vector stores. The entire ingested document goes directly to the agent reasoning context.

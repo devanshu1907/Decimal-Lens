@@ -26,7 +26,7 @@ export default function Error({
             Application Error Encountered
           </h2>
           <p className="text-xs text-text-secondary leading-relaxed font-sans">
-            An unexpected error occurred in the Decimallens layout engine. You can attempt to reset the application state or reload the current filing.
+            An unexpected error occurred in the Decimal Lens layout engine. You can attempt to reset the application state or reload the current filing.
           </p>
         </div>
 

@@ -11,6 +11,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from pydantic import BaseModel, Field
+from decimal import Decimal
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ from backend.agents import (
     simulate_streaming_text
 )
 
-app = FastAPI(title="DecimalLens API", version="1.0.0")
+app = FastAPI(title="Decimal Lens API", version="1.0.0")
 
 # ---------------------------------------------------------------------------
 # Rate limiter – simple in-memory sliding-window (no external deps required).
@@ -159,6 +160,55 @@ _SAFE_EXPR_RE = re.compile(r'^[\d\s\+\-\*\/\.\(\)]{1,512}$')
 MAX_TEXT_FOR_LLM = 50_000  # chars ~ 12,500 tokens
 
 
+def _calculate_historical_metrics(claims: list) -> dict:
+    """
+    Extracts major metrics from the claims list and calculates historical metrics.
+    """
+    revenue = None
+    operating_income = None
+    gross_profit = None
+    
+    for claim in claims:
+        if not isinstance(claim, dict):
+            continue
+        metric = str(claim.get("metric", "")).lower()
+        value = claim.get("value", None)
+        if value is None:
+            continue
+        try:
+            val_dec = Decimal(str(value))
+        except Exception:
+            continue
+            
+        # Search for Total Revenue or Revenue
+        if "revenue" in metric and "cost" not in metric and "operating" not in metric:
+            revenue = val_dec
+        # Search for Operating Income or Operating Profit
+        elif "operating income" in metric or "operating profit" in metric:
+            operating_income = val_dec
+        # Search for Gross Profit
+        elif "gross profit" in metric:
+            gross_profit = val_dec
+
+    metrics = {
+        "revenue": str(revenue) if revenue is not None else None,
+        "operating_income": str(operating_income) if operating_income is not None else None,
+        "operating_margin": "N/A",
+        "gross_profit": str(gross_profit) if gross_profit is not None else None,
+        "gross_margin": "N/A"
+    }
+
+    if revenue and revenue != Decimal('0'):
+        if operating_income is not None:
+            op_margin = (operating_income / revenue) * Decimal('100')
+            metrics["operating_margin"] = f"{op_margin.quantize(Decimal('0.01'))}%"
+        if gross_profit is not None:
+            gp_margin = (gross_profit / revenue) * Decimal('100')
+            metrics["gross_margin"] = f"{gp_margin.quantize(Decimal('0.01'))}%"
+
+    return metrics
+
+
 def _sanitize_llm_claims(claims: list) -> list:
     """
     Sanitize a list of claim dicts returned by the Auditor LLM before
@@ -188,7 +238,7 @@ async def health_check():
     return {
         "status": "healthy",
         "groq_api_key_configured": bool(os.environ.get("GROQ_API_KEY") and os.environ.get("GROQ_API_KEY") != "your-groq-api-key-here"),
-        "message": "DecimalLens Python FastAPI Backend is active"
+        "message": "Decimal Lens Python FastAPI Backend is active"
     }
 
 ALLOWED_EXTENSIONS = {"pdf", "csv", "md", "markdown", "txt"}
@@ -255,7 +305,7 @@ async def upload_document(file: UploadFile = File(...)):
             raise HTTPException(status_code=413, detail="File too large. Maximum allowed size is 25 MB.")
 
         # Magic-byte validation for PDFs – extension spoofing guard
-        if ext == "pdf" and not contents.startswith(_PDF_MAGIC):
+        if ext == "pdf" and _PDF_MAGIC not in contents[:1024]:
             raise HTTPException(status_code=400, detail="File does not appear to be a valid PDF.")
 
         # UUID-prefix the stored filename to prevent collision when multiple
@@ -334,7 +384,8 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
         
         # 4. Yield Forecaster chunks
         forecaster_full_response = ""
-        mock_forecaster = MOCK_FORECASTER_OUTPUT.copy()
+        import copy
+        mock_forecaster = copy.deepcopy(MOCK_FORECASTER_OUTPUT)
         
         # Adjust confidence level if all claims happen to be verified
         if all(c["verified"] for c in verified_claims) and not low_confidence:
@@ -379,7 +430,8 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                     {"role": "user", "content": f"Analyze this parsed filing text:\n\n{text_for_llm}"}
                 ],
                 response_format={"type": "json_object"},
-                stream=True
+                stream=True,
+                timeout=30.0
             )
             
             auditor_full_response = ""
@@ -428,12 +480,18 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                 
             yield f"event: verified_claims\ndata: {json.dumps({'claims': verified_claims})}\n\n"
             
+            if not verified_claims:
+                yield f"event: error\ndata: {json.dumps({'message': 'No financial claims with arithmetic relationships could be extracted from this document.'})}\n\n"
+                return
+            
             # 4. Call Forecaster Agent to stream growth projections
             yield f"event: status\ndata: {json.dumps({'status': 'Forecasting projections...'})}\n\n"
             
+            historical_metrics = _calculate_historical_metrics(verified_claims)
             forecaster_input = {
                 "claims": verified_claims,
-                "low_confidence_baseline": low_confidence
+                "low_confidence_baseline": low_confidence,
+                "historical_metrics": historical_metrics
             }
             
             forecaster_response = await client.chat.completions.create(
@@ -443,7 +501,8 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
                     {"role": "user", "content": f"Here is the verified financial data from the Auditor:\n\n{json.dumps(forecaster_input, indent=2)}"}
                 ],
                 response_format={"type": "json_object"},
-                stream=True
+                stream=True,
+                timeout=30.0
             )
             
             forecaster_full_response = ""
@@ -494,15 +553,9 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
         if all((c.get("verified", False) if isinstance(c, dict) else getattr(c, "verified", False)) for c in claims) and not low_confidence_baseline:
             mock_forecaster["confidence"] = "High"
             mock_forecaster["risk_assessment"] = "All calculations are verified and clean."
-            projections = []
             for p in mock_forecaster["projections"]:
-                projections.append({
-                    "year": p["year"],
-                    "projected_revenue": p["projected_revenue"],
-                    "projected_operating_income": p["projected_operating_income"].replace("*", ""),
-                    "risk_weight": "Low Risk"
-                })
-            mock_forecaster["projections"] = projections
+                p["risk_weight"] = "Low Risk"
+                p["projected_operating_income"] = p["projected_operating_income"].replace("*", "")
         else:
             mock_forecaster["confidence"] = "Low"
             if low_confidence_baseline:
@@ -519,9 +572,12 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
         try:
             yield f"event: status\ndata: {json.dumps({'status': 'Forecasting projections...'})}\n\n"
             
+            claims_dicts = [c.model_dump() if hasattr(c, 'model_dump') else (c.dict() if hasattr(c, 'dict') else c) for c in claims]
+            historical_metrics = _calculate_historical_metrics(claims_dicts)
             forecaster_input = {
-                "claims": [c.model_dump() if hasattr(c, 'model_dump') else (c.dict() if hasattr(c, 'dict') else c) for c in claims],
-                "low_confidence_baseline": low_confidence_baseline
+                "claims": claims_dicts,
+                "low_confidence_baseline": low_confidence_baseline,
+                "historical_metrics": historical_metrics
             }
             
             response = await client.chat.completions.create(
@@ -531,7 +587,8 @@ async def generate_forecast_stream(claims: list, low_confidence_baseline: bool):
                     {"role": "user", "content": f"Here is the verified financial data from the Auditor:\n\n{json.dumps(forecaster_input, indent=2)}"}
                 ],
                 response_format={"type": "json_object"},
-                stream=True
+                stream=True,
+                timeout=30.0
             )
             
             forecaster_full_response = ""

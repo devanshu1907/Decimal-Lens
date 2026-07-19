@@ -17,7 +17,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DecimalLens — Enterprise Financial Intelligence & Audit System",
+  title: "Decimal Lens — Enterprise Financial Intelligence & Audit System",
   description: "Deterministic math verification and document intelligence pipeline.",
   icons: {
     icon: [

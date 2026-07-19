@@ -1,5 +1,5 @@
 """
-Test suite for DecimalLens Deterministic Math Verification Engine.
+Test suite for Decimal Lens Deterministic Math Verification Engine.
 
 Covers:
 1. Exact match cases
@@ -164,6 +164,16 @@ class TestExpandedParsing:
     def test_abbreviated_millions(self):
         val = clean_numeric_value("$45.2M")
         assert val == Decimal("45200000")
+
+    def test_word_millions(self):
+        val = clean_numeric_value("$77,673 million")
+        assert val == Decimal("77673000000")
+        val = clean_numeric_value("1.5 million")
+        assert val == Decimal("1500000")
+
+    def test_word_billions(self):
+        val = clean_numeric_value("$1.3 billion")
+        assert val == Decimal("1300000000")
 
     def test_abbreviated_billions(self):
         val = clean_numeric_value("$1.3B")

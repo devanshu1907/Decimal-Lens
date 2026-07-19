@@ -1,5 +1,5 @@
 """
-DecimalLens — Deterministic Math Verification Engine (v2)
+Decimal Lens — Deterministic Math Verification Engine (v2)
 =========================================================
 
 Interval-arithmetic verification for financial claims extracted from
@@ -103,6 +103,12 @@ def clean_numeric_value(val_str: str) -> Decimal:
     Handles: $142,500,000 | 24.50% | $45.2M | ($12,500) | 142 500 000
     """
     clean = val_str.strip()
+
+    # Pre-normalize word-based magnitudes to symbols
+    clean = re.sub(r'\bmillion(?:s)?\b', 'M', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\bbillion(?:s)?\b', 'B', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\btrillion(?:s)?\b', 'T', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\bthousand(?:s)?\b', 'K', clean, flags=re.IGNORECASE)
 
     paren_match = _PAREN_NEG_RE.match(clean)
     is_paren_negative = False

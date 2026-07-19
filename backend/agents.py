@@ -23,7 +23,7 @@ def get_groq_client():
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
 # Auditor Agent System Prompt
-AUDITOR_SYSTEM_PROMPT = """You are the Auditor Agent, a key component of DecimalLens.
+AUDITOR_SYSTEM_PROMPT = """You are the Auditor Agent, a key component of Decimal Lens.
 Your task is to scan the ingested financial document text, locate numeric financial claims, and extract them into a structured JSON object.
 
 Extract a list of 3 to 6 major numeric claims from the text. Focus on revenue, profits, operating margins, or line items with clear arithmetic relationships.
@@ -48,18 +48,18 @@ Example JSON output structure:
       "metric": "Total Revenue (Q4 2025)",
       "reported": "$142,500,000",
       "value": 142500000,
-      "formula": "$45,200,000 (US) + $97,300,000 (Intl)",
+      "formula": "$45,200,000 (Domestic) + $97,300,000 (Intl)",
       "expression": "45200000 + 97300000",
       "page": 3,
-      "context": "For the quarter, our international market sectors generated $97,300,000 in revenues, representing a substantial growth path, while US domestic revenues stabilized at $45,200,000."
+      "context": "For the quarter, our international market sectors generated $97,300,000 in revenues, representing a substantial growth path, while domestic revenues stabilized at $45,200,000."
     }
   ]
 }
 """
 
 # Forecaster Agent System Prompt
-FORECASTER_SYSTEM_PROMPT = """You are the Forecaster Agent, a key component of DecimalLens.
-Your task is to receive the verified financial claims from the Auditor Agent and generate a 3-year growth projection and risk assessment.
+FORECASTER_SYSTEM_PROMPT = """You are the Forecaster Agent, a key component of Decimal Lens.
+Your task is to receive the verified financial claims and the computed `historical_metrics` (containing revenue, operating income, operating margin, gross profit, and gross margin) from the Auditor Agent and generate a 3-year growth projection and risk assessment.
 
 You MUST analyze the verification status of the input metrics:
 - If ANY claim used as a baseline for projections has `verified: false`, you MUST set the overall `confidence` to "Low", tag the affected years as "High Risk", and output a warning explaining that the calculations are built on top of arithmetic errors or unverified metrics.
@@ -68,8 +68,12 @@ You MUST analyze the verification status of the input metrics:
 Generate exactly 3 years of projections (FY 2026, FY 2027, FY 2028). For each year, estimate:
 1. `year`: e.g., "FY 2026 (Est)"
 2. `projected_revenue`: The projected revenue string (e.g., "$154,600,000").
-3. `projected_operating_income`: The projected operating income string (e.g. "$37,500,000").
-4. `risk_weight`: The risk category ("Low Risk", "Medium Risk", "High Risk (Math Error)" or "High Risk (Mismatched Claim)").
+3. `projected_operating_income`: The projected operating income string (e.g., "$37,500,000").
+4. `projected_operating_margin`: The projected operating margin as a percentage string (e.g., "24.26%"). Calculated as (projected_operating_income / projected_revenue) * 100.
+5. `margin_comparison`: A string comparing the projected operating margin with the historical baseline operating margin (e.g., "24.26% (vs 24.50% historical baseline)" or "24.26% (vs N/A baseline)" if the baseline was N/A).
+6. `projected_revenue_growth`: The projected revenue growth rate relative to the historical baseline revenue as a percentage string (e.g., "8.49% growth" or "N/A" if the baseline was N/A). Calculated as ((projected_revenue - historical_revenue) / historical_revenue) * 100.
+7. `projected_operating_income_growth`: The projected operating income growth rate relative to the historical baseline operating income as a percentage string (e.g., "7.41% growth" or "N/A" if the baseline was N/A). Calculated as ((projected_operating_income - historical_operating_income) / historical_operating_income) * 100.
+8. `risk_weight`: The risk category ("Low Risk", "Medium Risk", "High Risk (Math Error)" or "High Risk (Mismatched Claim)").
 
 You MUST respond strictly with a JSON object containing:
 1. `confidence`: "High" or "Low"
@@ -87,10 +91,10 @@ MOCK_AUDITOR_OUTPUT = {
       "metric": "Total Revenue (Q4 2025)",
       "reported": "$142,500,000",
       "value": 142500000,
-      "formula": "$45,200,000 (US) + $97,300,000 (Intl)",
+      "formula": "$45,200,000 (Domestic) + $97,300,000 (Intl)",
       "expression": "45200000 + 97300000",
       "page": 3,
-      "context": "For the quarter, our international market sectors generated $97,300,000 in revenues, while US domestic revenues stabilized at $45,200,000."
+      "context": "For the quarter, our international market sectors generated $97,300,000 in revenues, while domestic revenues stabilized at $45,200,000."
     },
     {
       "id": "claim-2",
@@ -132,18 +136,30 @@ MOCK_FORECASTER_OUTPUT = {
       "year": "FY 2026 (Est)",
       "projected_revenue": "$154,600,000",
       "projected_operating_income": "$37,500,000*",
+      "projected_operating_margin": "24.26%",
+      "margin_comparison": "24.26% (vs 24.50% historical baseline)",
+      "projected_revenue_growth": "8.49% growth",
+      "projected_operating_income_growth": "7.41% growth",
       "risk_weight": "High Risk (Math Error)"
     },
     {
       "year": "FY 2027 (Est)",
       "projected_revenue": "$167,700,000",
       "projected_operating_income": "$40,700,000*",
+      "projected_operating_margin": "24.27%",
+      "margin_comparison": "24.27% (vs 24.50% historical baseline)",
+      "projected_revenue_growth": "17.68% growth",
+      "projected_operating_income_growth": "16.58% growth",
       "risk_weight": "High Risk (Math Error)"
     },
     {
       "year": "FY 2028 (Est)",
       "projected_revenue": "$182,000,000",
       "projected_operating_income": "$44,100,000*",
+      "projected_operating_margin": "24.23%",
+      "margin_comparison": "24.23% (vs 24.50% historical baseline)",
+      "projected_revenue_growth": "27.72% growth",
+      "projected_operating_income_growth": "26.32% growth",
       "risk_weight": "High Risk (Math Error)"
     }
   ],

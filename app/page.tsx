@@ -2,6 +2,10 @@
 
 export const dynamic = "force-dynamic";
 
+const API_BASE_URL = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  ? "http://127.0.0.1:8000"
+  : "";
+
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -20,12 +24,15 @@ import {
   ZoomOut,
   Loader2,
   Download,
-  Printer
+  Printer,
+  HelpCircle,
+  RotateCcw
 } from "lucide-react";
 import nextDynamic from "next/dynamic";
 
 import { ThemeProvider } from "@/components/ThemeProviderClient";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { cn } from "@/lib/utils";
 
 const PdfViewer = nextDynamic(() => import("../components/PdfViewer"), {
@@ -67,6 +74,10 @@ interface ForecasterResponse {
     year: string;
     projected_revenue: string;
     projected_operating_income: string;
+    projected_operating_margin: string;
+    margin_comparison: string;
+    projected_revenue_growth: string;
+    projected_operating_income_growth: string;
     risk_weight: string;
   }[];
 }
@@ -83,7 +94,7 @@ interface AuditSession {
 }
 
 
-const SAMPLE_FILING_TEXT = `DECIMALLENS INC.
+const SAMPLE_FILING_TEXT = `DECIMAL LENS INC.
 FORM 10-Q | PART I - FINANCIAL INFORMATION
 
 The following table sets forth consolidated revenue and income metrics for the three-month period ended December 31, 2025. All metrics are compiled under strict GAAP standards, except where explicitly noted.
@@ -94,7 +105,7 @@ Gross Profit                   $62,100,000          [Sec. 1.3]
 Operating Income               $34,912,500          [Sec. 2.1]
 Operating Margin               24.50%               [Sec. 2.2]
 
-For the quarter, our international market sectors generated $97,300,000 in revenues, representing a substantial growth path, while US domestic revenues stabilized at $45,200,000.
+For the quarter, our international market sectors generated $97,300,000 in revenues, representing a substantial growth path, while domestic revenues stabilized at $45,200,000.
 COGS stood at $80,400,000, leaving Gross Profit at $62,100,000.
 R&D investments totaled $15,400,000, and SG&A expenses were reported at $12,100,000. Operating Income was reported at $34,912,500.
 Operating margin is calculated as Operating Income over Total Revenue, yielding 24.50%.
@@ -332,7 +343,7 @@ const TextDocumentViewer = ({
           </div>
           
           <div className="border-t border-slate-100 pt-3 mt-6 flex justify-between items-center text-[9px] text-slate-400 font-sans">
-            <span>DecimalLens Viewer</span>
+            <span>Decimal Lens Viewer</span>
             <span>Page {currentPage} of {numPages}</span>
           </div>
         </div>
@@ -397,7 +408,7 @@ const CsvDocumentViewer = ({
           </div>
           
           <div className="border-t border-slate-100 pt-3 mt-6 flex justify-between items-center text-[0.75em] text-slate-400 font-sans">
-            <span>DecimalLens Viewer</span>
+            <span>Decimal Lens Viewer</span>
             <span>1 Sheet | {parsedCsv?.length || 0} Rows</span>
           </div>
         </div>
@@ -453,6 +464,23 @@ export default function Page() {
   const leftPaneScrollRef = useRef<HTMLDivElement | null>(null);
   const claimsRef = useRef<Claim[]>([]);
 
+  const handleResetToDashboard = () => {
+    setFileName(null);
+    setStoredFileName(null);
+    setParsedText(null);
+    setExtractedClaims([]);
+    setForecasterResponse(null);
+    setAuditorText("");
+    setForecasterText("");
+    setErrorMsg("");
+    setSelectedClaimId(null);
+    setActiveAgent("auditor");
+    setMobileActiveTab("document");
+    setCurrentPage(1);
+    setIsAddingClaim(false);
+    setIsEditingClaim(false);
+  };
+
 
   // TanStack Table configurations
   const [claimsSorting, setClaimsSorting] = useState<SortingState>([]);
@@ -486,6 +514,44 @@ export default function Page() {
           {info.getValue()}
         </span>
       ),
+    }),
+    claimColumnHelper.accessor("recalculated", {
+      header: "Recalculated",
+      cell: (info) => (
+        <span className="font-mono text-[11px] font-bold text-accent-navy">
+          {info.getValue() || "—"}
+        </span>
+      ),
+    }),
+    claimColumnHelper.accessor("relative_error_bps", {
+      header: "Variance",
+      cell: (info) => {
+        const val = info.getValue();
+        const tier = info.row.original.confidence_tier;
+        const verified = info.row.original.verified;
+        if (verified) {
+          return <span className="font-mono text-[10px] text-text-secondary">—</span>;
+        }
+        if (val === undefined || val === null) {
+          return <span className="font-mono text-[10px] text-flagged font-semibold">Unverifiable</span>;
+        }
+        
+        const numericVal = parseFloat(val);
+        const formatted = isNaN(numericVal) ? val : `${numericVal > 0 ? "+" : ""}${numericVal.toFixed(0)} bps`;
+        
+        let textColor = "text-flagged";
+        if (tier === "MATERIAL_MISMATCH") {
+          textColor = "text-red-600 dark:text-red-400 font-bold";
+        } else if (tier === "NEAR_MISS") {
+          textColor = "text-flagged font-semibold";
+        }
+        
+        return (
+          <span className={cn("font-mono text-[10px]", textColor)} title={tier}>
+            {formatted}
+          </span>
+        );
+      },
     }),
     claimColumnHelper.accessor("verified", {
       header: "Status",
@@ -530,6 +596,10 @@ export default function Page() {
     year: string;
     projected_revenue: string;
     projected_operating_income: string;
+    projected_operating_margin: string;
+    margin_comparison: string;
+    projected_revenue_growth: string;
+    projected_operating_income_growth: string;
     risk_weight: string;
   }
 
@@ -543,6 +613,22 @@ export default function Page() {
       header: "Projected Revenue",
       cell: (info) => <span className="font-mono font-bold text-text-primary">{info.getValue()}</span>,
     }),
+    projectionColumnHelper.accessor("projected_revenue_growth", {
+      header: "Rev Growth",
+      cell: (info) => {
+        const val = info.getValue() || "N/A";
+        const isDecline = val.toLowerCase().includes("-") || val.toLowerCase().includes("decline");
+        const isNao = val === "N/A" || val.trim() === "";
+        return (
+          <span className={cn(
+            "font-mono font-bold",
+            isNao ? "text-text-secondary" : isDecline ? "text-flagged" : "text-verified"
+          )}>
+            {isNao ? "N/A" : val}
+          </span>
+        );
+      },
+    }),
     projectionColumnHelper.accessor("projected_operating_income", {
       header: "Projected Operating Income",
       cell: (info) => {
@@ -554,6 +640,30 @@ export default function Page() {
           </span>
         );
       },
+    }),
+    projectionColumnHelper.accessor("projected_operating_income_growth", {
+      header: "Income Growth",
+      cell: (info) => {
+        const val = info.getValue() || "N/A";
+        const isDecline = val.toLowerCase().includes("-") || val.toLowerCase().includes("decline");
+        const isNao = val === "N/A" || val.trim() === "";
+        return (
+          <span className={cn(
+            "font-mono font-bold",
+            isNao ? "text-text-secondary" : isDecline ? "text-flagged" : "text-verified"
+          )}>
+            {isNao ? "N/A" : val}
+          </span>
+        );
+      },
+    }),
+    projectionColumnHelper.accessor("margin_comparison", {
+      header: "Operating Margin (vs Baseline)",
+      cell: (info) => (
+        <span className="font-mono text-text-primary font-bold">
+          {info.getValue() || "N/A"}
+        </span>
+      ),
     }),
     projectionColumnHelper.accessor("risk_weight", {
       header: "Risk Weight",
@@ -703,7 +813,7 @@ export default function Page() {
     }
     
     try {
-      const response = await fetch("/api/forecast", {
+      const response = await fetch(`${API_BASE_URL}/api/forecast`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -799,12 +909,15 @@ export default function Page() {
     if (forecasterResponse?.projections) {
       rows.push([]);
       rows.push(["--- Growth Projections (3-Year Forecast) ---"]);
-      rows.push(["Fiscal Year", "Projected Revenue", "Projected Operating Income", "Risk Weight"]);
+      rows.push(["Fiscal Year", "Projected Revenue", "Revenue Growth", "Projected Operating Income", "Operating Income Growth", "Operating Margin (vs Baseline)", "Risk Weight"]);
       forecasterResponse.projections.forEach(p => {
         rows.push([
           p.year,
           p.projected_revenue,
+          p.projected_revenue_growth || "N/A",
           p.projected_operating_income,
+          p.projected_operating_income_growth || "N/A",
+          p.margin_comparison || "N/A",
           p.risk_weight
         ]);
       });
@@ -823,7 +936,7 @@ export default function Page() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `decimallens_audit_report_${fileName?.split('.')[0] || 'report'}.csv`);
+    link.setAttribute("download", `decimal_lens_audit_report_${fileName?.split('.')[0] || 'report'}.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
@@ -860,7 +973,7 @@ export default function Page() {
     setIsAnalyzing(true);
     setStatusText("Verifying calculation math...");
     try {
-      const verifyRes = await fetch("/api/verify-claim", {
+      const verifyRes = await fetch(`${API_BASE_URL}/api/verify-claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1064,7 +1177,7 @@ export default function Page() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const uploadRes = await fetch("/api/upload", {
+      const uploadRes = await fetch(`${API_BASE_URL}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -1092,7 +1205,7 @@ export default function Page() {
   const runAnalysisStream = async (text: string, isLowConfidence: boolean) => {
     setStatusText("Initializing analysis pipeline...");
     try {
-      const response = await fetch("/api/analyze", {
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1367,7 +1480,10 @@ export default function Page() {
   return (
     <ThemeProvider>
       <>
-        <div className="flex flex-col flex-1 h-screen overflow-hidden bg-bg print:hidden">
+        <div className={cn(
+          "flex flex-col flex-1 bg-bg print:hidden",
+          fileName ? "h-screen overflow-hidden" : "min-h-screen"
+        )}>
       <input
         type="file"
         ref={fileInputRef}
@@ -1377,91 +1493,7 @@ export default function Page() {
       />
 
       {/* Premium Header */}
-      <header className="h-14 bg-panel border-b border-border flex items-center justify-between px-3 sm:px-6 z-10">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Database className="w-5 h-5 text-accent-navy" />
-          <span className="font-semibold text-text-primary tracking-tight font-sans text-sm sm:text-base">DecimalLens</span>
-          <span className="hidden sm:inline-block text-[10px] uppercase font-mono bg-border px-1.5 py-0.5 rounded text-text-secondary tracking-widest">
-            v5.0 Audit
-          </span>
-        </div>
-
-        {/* Command Palette trigger */}
-        <button 
-          onClick={() => setSearchOpen(true)}
-          className="hidden md:flex items-center gap-2 border border-border bg-bg hover:bg-border/30 transition-all rounded-md px-3 py-1.5 text-xs text-text-secondary w-40 lg:w-72 justify-between cursor-pointer"
-        >
-          <span className="flex items-center gap-2">
-            <Search className="w-3.5 h-3.5" />
-            <span className="truncate">Search claims...</span>
-          </span>
-          <kbd className="hidden lg:inline-block bg-panel px-1.5 py-0.5 border border-border rounded text-[10px] font-mono shadow-sm">
-            ⌘K
-          </kbd>
-        </button>
-
-        {/* File State Indicator */}
-        <div className="flex items-center gap-1.5 sm:gap-3">
-          {fileName ? (
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="flex items-center gap-1.5 sm:gap-2 bg-muted border border-border px-2 sm:px-3 py-1 rounded-md text-xs font-medium text-text-primary max-w-[100px] xs:max-w-[150px] sm:max-w-[240px]">
-                <FileText className="w-3.5 h-3.5 text-accent-navy shrink-0" />
-                <span className="font-mono text-[11px] truncate">{fileName}</span>
-              </div>
-              
-              {/* Export Findings Buttons */}
-              {extractedClaims.length > 0 && (
-                <div className="flex items-center gap-0.5 sm:gap-1 bg-muted border border-border p-1 rounded-md">
-                  <button
-                    onClick={exportToCsv}
-                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-border/30 px-2 py-1 rounded transition-all cursor-pointer font-sans"
-                    title="Export verified claims and forecast projections to a CSV file"
-                  >
-                    <Download className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
-                    <span className="hidden sm:inline">CSV</span>
-                  </button>
-                  <span className="w-px h-3.5 bg-border" />
-                  <button
-                    onClick={handlePrint}
-                    className="flex items-center gap-1 text-[10px] uppercase font-bold text-accent-navy hover:bg-border/30 px-2 py-1 rounded transition-all cursor-pointer font-sans"
-                    title="Print report card or save as PDF"
-                  >
-                    <Printer className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
-                    <span className="hidden sm:inline">Print</span>
-                  </button>
-                </div>
-              )}
-
-              <button
-                onClick={() => {
-                  setFileName(null);
-                  setStoredFileName(null);
-                  setParsedText(null);
-                  setExtractedClaims([]);
-                  setForecasterResponse(null);
-                  setAuditorText("");
-                  setForecasterText("");
-                  setErrorMsg("");
-                  setSelectedClaimId(null);
-                }}
-                className="text-xs text-text-secondary hover:text-text-primary px-2 sm:px-2.5 py-1 rounded border border-border bg-panel hover:bg-bg transition-all cursor-pointer"
-              >
-                Clear
-              </button>
-            </div>
-          ) : (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 sm:gap-2 bg-accent-navy text-white text-xs font-semibold px-3 sm:px-4 py-1.5 rounded-md hover:bg-opacity-90 transition-all cursor-pointer shadow-sm"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Upload Document</span>
-              <span className="xs:hidden">Upload</span>
-            </button>
-          )}
-          <ThemeToggle />
-        </div>
-      </header>
+      <Header />
 
       {/* Mobile/Tablet View Switcher */}
       <div className="md:hidden h-11 bg-panel border-b border-border flex shrink-0 w-full select-none">
@@ -1510,7 +1542,12 @@ export default function Page() {
           >
             {!fileName ? (
               <div className="max-w-xl w-full flex flex-col gap-6 my-auto p-8">
-                <div className="border-2 border-dashed border-border rounded-lg bg-panel p-8 text-center flex flex-col items-center gap-4 shadow-sm">
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  className="border-2 border-dashed border-border rounded-lg bg-panel p-8 text-center flex flex-col items-center gap-4 shadow-sm"
+                >
                   <div className="w-12 h-12 bg-bg rounded-full flex items-center justify-center text-text-secondary border border-border">
                     <Upload className="w-6 h-6" />
                   </div>
@@ -1521,20 +1558,24 @@ export default function Page() {
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full mt-2 justify-center max-w-sm">
-                    <button
+                    <motion.button
+                      whileHover={{ scale: 1.015 }}
+                      whileTap={{ scale: 0.985 }}
                       onClick={() => fileInputRef.current?.click()}
                       className="flex-1 bg-accent-navy text-white text-xs font-semibold py-2.5 rounded-md hover:bg-opacity-90 transition-all cursor-pointer shadow-sm"
                     >
                       Select File to Upload
-                    </button>
-                    <button
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.015 }}
+                      whileTap={{ scale: 0.985 }}
                       onClick={handleLoadSample}
                       className="flex-1 border border-border bg-panel text-text-primary text-xs font-semibold py-2.5 rounded-md hover:bg-bg transition-all cursor-pointer shadow-sm"
                     >
                       Load Q4 2025 Sample
-                    </button>
+                    </motion.button>
                   </div>
-                </div>
+                </motion.div>
 
                 {recentSessions.length > 0 && (
                   <div className="bg-panel border border-border rounded-lg p-5 shadow-sm">
@@ -1554,11 +1595,17 @@ export default function Page() {
                       </button>
                     </div>
                     <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto">
-                      {recentSessions.map((session) => (
+                      {recentSessions.map((session, index) => (
                         <motion.div
                           key={session.id}
+                          initial={{ opacity: 0, x: -6 }}
+                          animate={{ opacity: 1, x: 0 }}
                           whileHover={{ x: 2, scale: 1.008 }}
-                          transition={{ type: "tween", ease: "easeOut", duration: 0.15 }}
+                          transition={{
+                            opacity: { duration: 0.2, delay: index * 0.04, ease: "easeOut" },
+                            x: { duration: 0.2, delay: index * 0.04, ease: "easeOut" },
+                            scale: { duration: 0.12 }
+                          }}
                           onClick={() => {
                             setFileName(session.fileName);
                             setStoredFileName(session.storedFileName ?? null);
@@ -1608,7 +1655,7 @@ export default function Page() {
               </div>
             ) : fileName.toLowerCase().endsWith('.pdf') ? (
               <PdfViewer
-                url={`/api/document/${storedFileName ?? fileName}`}
+                url={`${API_BASE_URL}/api/document/${storedFileName ?? fileName}`}
                 currentPage={currentPage}
                 onPageChange={(page) => setCurrentPage(page)}
                 highlightText={activeClaim?.context}
@@ -1692,12 +1739,45 @@ export default function Page() {
             </div>
 
             {fileName && (
-              <span className="text-[10px] font-mono text-text-secondary bg-panel border border-border px-1.5 sm:px-2 py-0.5 rounded">
-                <span className="hidden xs:inline">Verified: </span>
-                {extractedClaims.filter(c => c.verified).length}/{extractedClaims.length}
-                <span className="hidden xs:inline"> Claims</span>
-                <span className="xs:hidden"> OK</span>
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="hidden xl:inline-block text-[10px] font-mono text-text-secondary bg-panel border border-border px-2 py-1 rounded shrink-0">
+                  Verified: {extractedClaims.filter(c => c.verified).length}/{extractedClaims.length} Claims
+                </span>
+
+                {/* Relocated Action Toolbar: Export, Print, Clear */}
+                <div className="flex items-center gap-0.5 bg-panel border border-border p-0.5 rounded-md shrink-0 shadow-sm">
+                  {extractedClaims.length > 0 && (
+                    <>
+                      <button
+                        onClick={exportToCsv}
+                        className="flex items-center gap-1 text-[10px] font-semibold text-text-primary hover:text-accent-navy hover:bg-bg px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                        title="Export verified claims and forecast projections to a CSV file"
+                      >
+                        <Download className="w-3 h-3 text-accent-navy" />
+                        <span className="hidden sm:inline">Export</span>
+                      </button>
+                      <span className="w-px h-3.5 bg-border" />
+                      <button
+                        onClick={handlePrint}
+                        className="flex items-center gap-1 text-[10px] font-semibold text-text-primary hover:text-accent-navy hover:bg-bg px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                        title="Print report card or save as PDF"
+                      >
+                        <Printer className="w-3 h-3 text-accent-navy" />
+                        <span className="hidden sm:inline">Print</span>
+                      </button>
+                      <span className="w-px h-3.5 bg-border" />
+                    </>
+                  )}
+                  <button
+                    onClick={handleResetToDashboard}
+                    className="flex items-center gap-1 text-[10px] font-semibold text-text-secondary hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 px-2 py-1 rounded transition-all cursor-pointer font-sans"
+                    title="Clear current audit document and return to dashboard"
+                  >
+                    <RotateCcw className="w-3 h-3 text-text-secondary" />
+                    <span className="hidden sm:inline">Clear</span>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
@@ -1756,6 +1836,31 @@ export default function Page() {
                         </button>
                       )}
                     </div>
+
+                    {/* Auditor KPI Dashboard Cards */}
+                    {extractedClaims.length > 0 && (
+                      <div className="grid grid-cols-3 gap-3 mb-1">
+                        <div className="bg-panel border border-border rounded-md p-3 shadow-sm flex flex-col gap-1">
+                          <span className="text-[9px] uppercase tracking-wider text-text-secondary font-semibold font-sans">Total Audited</span>
+                          <span className="font-mono text-base font-bold text-text-primary">{extractedClaims.length} Claims</span>
+                        </div>
+                        <div className="bg-panel border border-border rounded-md p-3 shadow-sm flex flex-col gap-1">
+                          <span className="text-[9px] uppercase tracking-wider text-text-secondary font-semibold font-sans">Math Accuracy</span>
+                          <span className="font-mono text-base font-bold text-verified">
+                            {((extractedClaims.filter(c => c.verified).length / extractedClaims.length) * 100).toFixed(0)}% OK
+                          </span>
+                        </div>
+                        <div className="bg-panel border border-border rounded-md p-3 shadow-sm flex flex-col gap-1">
+                          <span className="text-[9px] uppercase tracking-wider text-text-secondary font-semibold font-sans">Flagged Issues</span>
+                          <span className={cn(
+                            "font-mono text-base font-bold",
+                            extractedClaims.filter(c => !c.verified).length > 0 ? "text-flagged animate-pulse" : "text-verified"
+                          )}>
+                            {extractedClaims.filter(c => !c.verified).length} Alerts
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Status Alert while analyzing */}
                     {isAnalyzing && statusText && (
@@ -1820,11 +1925,14 @@ export default function Page() {
                                 ))}
                               </thead>
                               <tbody className="divide-y divide-border/60">
-                                {claimsTable.getRowModel().rows.map(row => {
+                                {claimsTable.getRowModel().rows.map((row, index) => {
                                   const isSelected = row.original.id === selectedClaimId;
                                   return (
-                                    <tr 
+                                    <motion.tr 
                                       key={row.id}
+                                      initial={{ opacity: 0, y: 4 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ duration: 0.18, delay: index * 0.03, ease: "easeOut" }}
                                       onClick={() => handleSelectClaim(row.original.id)}
                                       className={`cursor-pointer transition-all hover:bg-bg/40 ${
                                         isSelected 
@@ -1849,7 +1957,7 @@ export default function Page() {
                                           </td>
                                         );
                                       })}
-                                    </tr>
+                                    </motion.tr>
                                   );
                                 })}
                               </tbody>
@@ -1859,7 +1967,9 @@ export default function Page() {
 
                         {extractedClaims.length > 0 && !isAddingClaim && (
                           <div className="flex justify-end mt-1">
-                            <button
+                             <motion.button
+                              whileHover={{ scale: 1.015 }}
+                              whileTap={{ scale: 0.985 }}
                               onClick={() => {
                                 setEditMetric("");
                                 setEditReported("");
@@ -1874,7 +1984,7 @@ export default function Page() {
                               className="flex items-center gap-1.5 text-xs text-accent-navy hover:text-opacity-80 font-semibold border border-accent-navy/20 hover:border-accent-navy px-3 py-1.5 rounded bg-panel transition-all cursor-pointer font-sans font-semibold"
                             >
                               + Add Custom Claim
-                            </button>
+                            </motion.button>
                           </div>
                         )}
 
@@ -2127,7 +2237,9 @@ export default function Page() {
                       !isAnalyzing && (
                         <div className="py-12 text-center text-xs text-text-secondary flex flex-col items-center gap-3">
                           <p className="font-sans">No claims extracted. Ensure your PDF has parseable financial data.</p>
-                          <button
+                          <motion.button
+                            whileHover={{ scale: 1.015 }}
+                            whileTap={{ scale: 0.985 }}
                             onClick={() => {
                               setEditMetric("");
                               setEditReported("");
@@ -2142,7 +2254,7 @@ export default function Page() {
                             className="flex items-center gap-1.5 text-xs text-accent-navy hover:text-opacity-80 font-semibold border border-accent-navy/20 hover:border-accent-navy px-3 py-1.5 rounded bg-panel transition-all cursor-pointer font-sans"
                           >
                             + Add Custom Claim Manually
-                          </button>
+                          </motion.button>
                         </div>
                       )
                     )}
@@ -2166,21 +2278,25 @@ export default function Page() {
                       
                       <div className="flex gap-2">
                         {forecasterText && (
-                          <button
+                          <motion.button
+                            whileHover={{ scale: 1.015 }}
+                            whileTap={{ scale: 0.985 }}
                             onClick={() => setShowRawForecaster(!showRawForecaster)}
                             className="text-[10px] text-text-secondary hover:text-text-primary border border-border bg-panel px-2 py-1 rounded transition-all cursor-pointer font-sans"
                           >
                             {showRawForecaster ? "Hide JSON" : "Show JSON"}
-                          </button>
+                          </motion.button>
                         )}
                         {extractedClaims.length > 0 && (
-                          <button
+                          <motion.button
+                            whileHover={{ scale: 1.015 }}
+                            whileTap={{ scale: 0.985 }}
                             disabled={isAnalyzing}
                             onClick={() => runForecastStream(extractedClaims)}
                             className="text-[10px] text-white bg-accent-navy hover:bg-opacity-95 disabled:bg-opacity-50 px-2.5 py-1 rounded transition-all cursor-pointer font-sans font-semibold"
                           >
                             Re-run Projections
-                          </button>
+                          </motion.button>
                         )}
                       </div>
                     </div>
@@ -2285,8 +2401,14 @@ export default function Page() {
                                    ))}
                                  </thead>
                                  <tbody className="divide-y divide-border/60">
-                                   {projectionsTable.getRowModel().rows.map(row => (
-                                     <tr key={row.id} className="hover:bg-bg/20 transition-all">
+                                   {projectionsTable.getRowModel().rows.map((row, index) => (
+                                     <motion.tr 
+                                       key={row.id} 
+                                       initial={{ opacity: 0, y: 4 }}
+                                       animate={{ opacity: 1, y: 0 }}
+                                       transition={{ duration: 0.2, delay: index * 0.05, ease: "easeOut" }}
+                                       className="hover:bg-bg/20 transition-all"
+                                     >
                                        {row.getVisibleCells().map(cell => {
                                          const isRiskWeight = cell.column.id === "risk_weight";
                                          return (
@@ -2301,7 +2423,7 @@ export default function Page() {
                                            </td>
                                          );
                                        })}
-                                     </tr>
+                                     </motion.tr>
                                    ))}
                                  </tbody>
                                </table>
@@ -2392,6 +2514,8 @@ export default function Page() {
         )}
       </AnimatePresence>
 
+
+
       <AnimatePresence>
         {showLoadingOverlay && (
           <motion.div
@@ -2457,13 +2581,14 @@ export default function Page() {
                 {statusText}
               </motion.div>
               <div className="text-[10px] text-text-secondary font-sans leading-normal">
-                DecimalLens is running deterministic math checks on your document. Please wait.
+                Decimal Lens is running deterministic math checks on your document. Please wait.
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
       </div>
+      {!fileName && <Footer />}
 
       {/* Printable Report Layout */}
       {fileName && (
@@ -2471,7 +2596,7 @@ export default function Page() {
           <div className="border-b-2 border-slate-950 pb-4 mb-6">
             <div className="flex justify-between items-end">
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-950 uppercase">DecimalLens Audit Summary</h1>
+                <h1 className="text-xl font-bold tracking-tight text-slate-950 uppercase">Decimal Lens Audit Summary</h1>
                 <p className="text-xs text-slate-500 mt-1 font-sans">Enterprise Financial Intelligence & Calculation Verification</p>
               </div>
               <div className="text-right">
@@ -2583,7 +2708,7 @@ export default function Page() {
 
           {/* Footer signature */}
           <div className="border-t border-slate-200 pt-4 mt-8 flex justify-between items-center text-[9px] text-slate-400">
-            <span>DecimalLens Financial Intel - Confidential Report</span>
+            <span>Decimal Lens Financial Intel - Confidential Report</span>
             <span>Generated by Devanshu Yadav</span>
           </div>
         </div>
