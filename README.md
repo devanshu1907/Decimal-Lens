@@ -3,6 +3,7 @@
 <div align="center">
 
   ### **AI-Native Single-Document Math Verification & Projections Pipeline**
+  <sub>*NamasteDev × OpenAI Hackathon Submission*</sub>
 
   [![Live on Vercel](https://img.shields.io/badge/LIVE%20ON%20VERCEL-https%3A%2F%2Fdecimal--lens.vercel.app%2F-00E5FF?style=for-the-badge&logo=vercel&logoColor=black&labelColor=000000)](https://decimal-lens.vercel.app/)
 
@@ -162,4 +163,4 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 📄 License & Credits
 
-Designed & Built by **Devanshu Yadav** — Built for financial analysts, auditors, and enterprise intelligence pipelines.
+Designed & Built by **Devanshu Yadav** — Official submission for **NamasteDev × OpenAI Hackathon**. Built for financial analysts, auditors, and enterprise intelligence pipelines.
