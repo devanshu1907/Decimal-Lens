@@ -2,6 +2,14 @@ import os
 import json
 import asyncio
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
+
+# Ensure environment variables from .env.local are loaded
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env.local")
+if os.path.exists(_env_path):
+    load_dotenv(_env_path, override=True)
+else:
+    load_dotenv(override=True)
 
 # Initialize client using Groq compatible base URL
 def get_groq_client():
@@ -70,9 +78,9 @@ Generate exactly 3 years of projections (FY 2026, FY 2027, FY 2028). For each ye
 2. `projected_revenue`: The projected revenue string (e.g., "$154,600,000").
 3. `projected_operating_income`: The projected operating income string (e.g., "$37,500,000").
 4. `projected_operating_margin`: The projected operating margin as a percentage string (e.g., "24.26%"). Calculated as (projected_operating_income / projected_revenue) * 100.
-5. `margin_comparison`: A string comparing the projected operating margin with the historical baseline operating margin (e.g., "24.26% (vs 24.50% historical baseline)" or "24.26% (vs N/A baseline)" if the baseline was N/A).
-6. `projected_revenue_growth`: The projected revenue growth rate relative to the historical baseline revenue as a percentage string (e.g., "8.49% growth" or "N/A" if the baseline was N/A). Calculated as ((projected_revenue - historical_revenue) / historical_revenue) * 100.
-7. `projected_operating_income_growth`: The projected operating income growth rate relative to the historical baseline operating income as a percentage string (e.g., "7.41% growth" or "N/A" if the baseline was N/A). Calculated as ((projected_operating_income - historical_operating_income) / historical_operating_income) * 100.
+5. `margin_comparison`: A string comparing the projected operating margin with the historical baseline operating margin (e.g., "24.26% (vs 24.50% historical baseline)"). You MUST calculate this percentage comparison even if the baseline had arithmetic errors.
+6. `projected_revenue_growth`: The projected revenue growth rate relative to the historical baseline revenue as a percentage string (e.g., "8.49% growth"). Calculated as ((projected_revenue - historical_revenue) / historical_revenue) * 100.
+7. `projected_operating_income_growth`: The projected operating income growth rate relative to the historical baseline operating income as a percentage string (e.g., "7.41% growth"). Calculated as ((projected_operating_income - historical_operating_income) / historical_operating_income) * 100.
 8. `risk_weight`: The risk category ("Low Risk", "Medium Risk", "High Risk (Math Error)" or "High Risk (Mismatched Claim)").
 
 You MUST respond strictly with a JSON object containing:

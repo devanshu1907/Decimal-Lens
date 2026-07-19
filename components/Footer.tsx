@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export function Footer() {
   return (
-    <footer className="bg-panel border-t border-border py-6 px-4 mt-auto text-xs text-text-secondary shrink-0">
+    <footer className="bg-panel border-t border-border py-4 px-4 mt-auto text-xs text-text-secondary shrink-0 print:hidden">
       <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
           <span>© {new Date().getFullYear()} Decimal Lens. All rights reserved.</span>

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { CheckCircle2, Shield, TrendingUp, Cpu } from "lucide-react";
+import { ScopePipelineDiagram } from "@/components/ScopePipelineDiagram";
 
 export default function AboutPage() {
   return (
@@ -28,12 +29,13 @@ export default function AboutPage() {
         {/* Pillars Section */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <motion.div 
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.05 }}
-            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3"
+            whileHover={{ y: -4, scale: 1.015 }}
+            transition={{ duration: 0.3, delay: 0.05, type: "spring", stiffness: 350, damping: 25 }}
+            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3 cursor-pointer transition-shadow hover:shadow-md"
           >
-            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-accent-navy">
+            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-accent-navy dark:text-blue-400">
               <Cpu className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-text-primary font-sans">
@@ -45,12 +47,13 @@ export default function AboutPage() {
           </motion.div>
 
           <motion.div 
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3"
+            whileHover={{ y: -4, scale: 1.015 }}
+            transition={{ duration: 0.3, delay: 0.1, type: "spring", stiffness: 350, damping: 25 }}
+            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3 cursor-pointer transition-shadow hover:shadow-md"
           >
-            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-verified">
+            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-verified dark:text-emerald-400">
               <Shield className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-text-primary font-sans">
@@ -62,12 +65,13 @@ export default function AboutPage() {
           </motion.div>
 
           <motion.div 
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.15 }}
-            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3"
+            whileHover={{ y: -4, scale: 1.015 }}
+            transition={{ duration: 0.3, delay: 0.15, type: "spring", stiffness: 350, damping: 25 }}
+            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3 cursor-pointer transition-shadow hover:shadow-md"
           >
-            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-accent-navy">
+            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-accent-navy dark:text-blue-400">
               <TrendingUp className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-text-primary font-sans">
@@ -79,12 +83,13 @@ export default function AboutPage() {
           </motion.div>
 
           <motion.div 
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.2 }}
-            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3"
+            whileHover={{ y: -4, scale: 1.015 }}
+            transition={{ duration: 0.3, delay: 0.2, type: "spring", stiffness: 350, damping: 25 }}
+            className="bg-panel border border-border rounded-lg p-6 shadow-sm flex flex-col gap-3 cursor-pointer transition-shadow hover:shadow-md"
           >
-            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-verified">
+            <div className="w-9 h-9 bg-bg rounded-lg border border-border flex items-center justify-center text-verified dark:text-emerald-400">
               <CheckCircle2 className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-text-primary font-sans">
@@ -95,6 +100,15 @@ export default function AboutPage() {
             </p>
           </motion.div>
         </div>
+
+        {/* Interactive Scope & Architecture Pipeline Diagram */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.22 }}
+        >
+          <ScopePipelineDiagram />
+        </motion.div>
 
         {/* Narrative Section */}
         <motion.section 

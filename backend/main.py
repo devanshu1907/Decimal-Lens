@@ -172,11 +172,19 @@ def _calculate_historical_metrics(claims: list) -> dict:
         if not isinstance(claim, dict):
             continue
         metric = str(claim.get("metric", "")).lower()
+        reported = str(claim.get("reported", "")).lower()
         value = claim.get("value", None)
         if value is None:
             continue
         try:
             val_dec = Decimal(str(value))
+            # Scale up if the reported string specifies million/billion/trillion but numeric value is unscaled
+            if "million" in reported and val_dec < Decimal('1000000'):
+                val_dec *= Decimal('1000000')
+            elif "billion" in reported and val_dec < Decimal('1000000000'):
+                val_dec *= Decimal('1000000000')
+            elif "trillion" in reported and val_dec < Decimal('1000000000000'):
+                val_dec *= Decimal('1000000000000')
         except Exception:
             continue
             
@@ -387,19 +395,70 @@ async def generate_analysis_stream(text: str, low_confidence: bool):
         import copy
         mock_forecaster = copy.deepcopy(MOCK_FORECASTER_OUTPUT)
         
-        # Adjust confidence level if all claims happen to be verified
-        if all(c["verified"] for c in verified_claims) and not low_confidence:
-            mock_forecaster["confidence"] = "High"
-            mock_forecaster["risk_assessment"] = "All calculations are verified and clean."
-            for p in mock_forecaster["projections"]:
-                p["risk_weight"] = "Low Risk"
-                p["projected_operating_income"] = p["projected_operating_income"].replace("*", "")
-        else:
-            mock_forecaster["confidence"] = "Low"
-            # Ensure the risk explanation is consistent
-            if low_confidence:
-                mock_forecaster["risk_assessment"] += " Layout parsing warning was flagged due to malformed tables in the source document."
+        hist = _calculate_historical_metrics(verified_claims)
+        try:
+            rev_base = float(hist.get("revenue") or 142500000)
+            inc_base = float(hist.get("operating_income") or rev_base * 0.245)
+        except Exception:
+            rev_base = 142500000.0
+            inc_base = 34912500.0
+
+        p1_rev = int(rev_base * 1.0849)
+        p1_inc = int(inc_base * 1.0741)
+        p1_margin = (p1_inc / p1_rev * 100) if p1_rev > 0 else 24.5
+
+        p2_rev = int(rev_base * 1.1768)
+        p2_inc = int(inc_base * 1.1658)
+        p2_margin = (p2_inc / p2_rev * 100) if p2_rev > 0 else 24.5
+
+        p3_rev = int(rev_base * 1.2772)
+        p3_inc = int(inc_base * 1.2632)
+        p3_margin = (p3_inc / p3_rev * 100) if p3_rev > 0 else 24.5
+
+        base_margin_str = hist.get("operating_margin") or "24.50%"
+
+        is_all_clean = all(c.get("verified", False) for c in verified_claims) and not low_confidence
+        risk_label = "Low Risk" if is_all_clean else "High Risk (Math Error)"
+
+        mock_forecaster["confidence"] = "High" if is_all_clean else "Low"
+        mock_forecaster["projections"] = [
+            {
+                "year": "FY 2026 (Est)",
+                "projected_revenue": f"${p1_rev:,}",
+                "projected_operating_income": f"${p1_inc:,}",
+                "projected_operating_margin": f"{p1_margin:.2f}%",
+                "margin_comparison": f"{p1_margin:.2f}% (vs {base_margin_str} baseline)",
+                "projected_revenue_growth": "8.49% growth",
+                "projected_operating_income_growth": "7.41% growth",
+                "risk_weight": risk_label
+            },
+            {
+                "year": "FY 2027 (Est)",
+                "projected_revenue": f"${p2_rev:,}",
+                "projected_operating_income": f"${p2_inc:,}",
+                "projected_operating_margin": f"{p2_margin:.2f}%",
+                "margin_comparison": f"{p2_margin:.2f}% (vs {base_margin_str} baseline)",
+                "projected_revenue_growth": "17.68% growth",
+                "projected_operating_income_growth": "16.58% growth",
+                "risk_weight": risk_label
+            },
+            {
+                "year": "FY 2028 (Est)",
+                "projected_revenue": f"${p3_rev:,}",
+                "projected_operating_income": f"${p3_inc:,}",
+                "projected_operating_margin": f"{p3_margin:.2f}%",
+                "margin_comparison": f"{p3_margin:.2f}% (vs {base_margin_str} baseline)",
+                "projected_revenue_growth": "27.72% growth",
+                "projected_operating_income_growth": "26.32% growth",
+                "risk_weight": risk_label
+            }
+        ]
         
+        if is_all_clean:
+            mock_forecaster["risk_assessment"] = "All calculations are verified and clean."
+        else:
+            mock_forecaster["risk_assessment"] = "The Forecaster Agent intercepted arithmetic mismatches or unverified baseline claims. Downstream projections reflect potential structural reporting errors."
+
         yield f"event: status\ndata: {json.dumps({'status': 'Forecasting projections (Mock Mode)...'})}\n\n"
         
         async for chunk in simulate_streaming_text(mock_forecaster):
